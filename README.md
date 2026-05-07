@@ -1,5 +1,4 @@
-# dex — Docker Execute
-
+# `D`ocker `Ex`ecute - `dex`
 > [!IMPORTANT]
 > This project was started by me to create a tool that can handle the execution of commands transparently inside a persistent Docker container, and that can be customized using a layer of configuration files to run a chain of commands by a simple alias.
 
