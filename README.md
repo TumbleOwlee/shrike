@@ -7,24 +7,6 @@
 
 The goal of the project is a shell script for highest compatibility and least amount of dependencies to provide a way to run arbitrary commands transparently in a closed docker container environment. It mostly works like a pipeline environment with the current repository mounted at `/workspace`. It provides an easy layered configuration scheme to support most use-cases.
 
----
-
-## Table of Contents
-
-1. [Installation](#installation)
-1. [How it works](#how-it-works)
-1. [Usage](#usage)
-1. [Configuration hierarchy](#configuration-hierarchy)
-1. [Config file reference](#config-file-reference)
-   - [Profile sections](#profile-sections)
-   - [Alias sections](#alias-sections)
-   - [Pipeline aliases](#pipeline-aliases)
-   - [Project section](#project-section)
-1. [Environment variables](#environment-variables)
-1. [Example files](#example-files)
-
----
-
 ## Installation
 
 This project consists of a single bash script `dex`. Thus, to install `dex`, just run the following one-liner.
@@ -37,21 +19,17 @@ curl -o ~/.local/bin/dex https://raw.githubusercontent.com/TumbleOwlee/dex/refs/
 wget -q -o ~/.local/bin/dex https://raw.githubusercontent.com/TumbleOwlee/dex/refs/heads/main/dex
 ```
 
----
-
-## How it works
+## How It Works
 
 `dex` is fully powered by the layered configuration system. In general it follows these steps.
 
 1. **Load configuration**: The tool will try to locate all possible configuration. It follows a layered configuration scheme to provide highest flexibility. The layers are given as follows (*highest to lowest*).
-    2. **Project Specific**: The project specific configuration are either located in `~/.dex.d/` or `~/.local/share/.dex.d/`. These configuration have highest priority to provide the option to adapt a shared configuration given by the repository to the personal needs.
-    1. **Repository**: The repository configuration is located in `$GIT_ROOT/.dex.conf`. This is the configuration shared between all developers of the repository.
-    1. **Global**: The global configuration is either located in `~/.dex.conf` or `~/.local/share/.dex.conf`. This configuration has the lowest priority and is mostly used for general profiles (e.g. a default profile for `cmake` or `npm` projects).
+    - **Project Specific**: The project specific configuration are either located in `~/.dex.d/` or `~/.local/share/.dex.d/`. These configuration have highest priority to provide the option to adapt a shared configuration given by the repository to the personal needs.
+    - **Repository**: The repository configuration is located in `$GIT_ROOT/.dex.conf`. This is the configuration shared between all developers of the repository.
+    - **Global**: The global configuration is either located in `~/.dex.conf` or `~/.local/share/.dex.conf`. This configuration has the lowest priority and is mostly used for general profiles (e.g. a default profile for `cmake` or `npm` projects).
 1. **Image creation**: After the configuration is loaded, the profile is loaded. Based on the profile either the image is pulled or the dockerfile is used to create the image. In case a dockerfile is specified, the image is tagged based on the full path of the dockerfile itself. *If the image is already present, this step is skipped.*
 1. **Container creation**: On the first invocation the container is created (`docker run -d`) and kept alive. The user can enforce a fresh container by specifying the `-r | --restart` option (e.g. after changing port mappings or the image). The container will always mount the current git repository at `/workspace`. *If no restart is requested and the container is already active, this step is skipped.*
 1. **Command execution**: Finally the commands are executed. The user can either specify an alias that's mapped to a command or to a pipeline that itself contains references to a set of other alias. Either a single command or a whole pipeline is executed in the given order. If a single step of a pipeline fails, the whole pipeline is immediately terminated.
-
----
 
 ## Usage
 
@@ -81,9 +59,7 @@ Options
   -S, --stop-all           Stop and remove ALL dex-managed containers
 ```
 
----
-
-## Configuration hierarchy
+## Configuration Hierarchy
 
 Config files are **merged** in the following priority order (*highest priority first*):
 
@@ -95,7 +71,7 @@ Config files are **merged** in the following priority order (*highest priority f
 
 When the same key is defined in multiple files the **highest-priority file wins**. All three files are optional — a project only needs the repository config to work out of the box.
 
-### Local project config matching
+### Project Matching
 
 Files in `~/.dex.d/` are scanned in alphabetical order. The first file whose `pattern` key (a bash ERE regex) matches the absolute path of the current git root is selected. This lets one file cover all worktrees of a project.
 
@@ -104,13 +80,11 @@ Files in `~/.dex.d/` are scanned in alphabetical order. The first file whose `pa
 pattern = .*/Github/myproject(/.*)?
 ```
 
----
-
-## Config file reference
+## Config File
 
 All config files share the same INI format. Lines starting with `#` are comments. Keys use `=`. Section headers are in `[square brackets]`.
 
-### Profile sections
+### Profile Section
 
 A profile section defines the Docker image and default environment for a named set of aliases.
 
@@ -130,7 +104,7 @@ ports  = 8080:8080
 
 Multiple profiles can coexist in one file. Select a profile with `-p <name>`.
 
-### Alias sections
+### Alias Section
 
 Aliases are defined with `[alias:<name>]` (unscoped, available in all profiles) or `[alias:<profile>:<name>]` (scoped to a specific profile).
 
@@ -157,7 +131,7 @@ interactive = true
 | `hidden` | Set to `true` to make this alias internal-only: it is excluded from `--list` output and cannot be invoked directly. Hidden aliases can still be used as steps inside a pipeline. |
 
 
-### Pipeline aliases
+### Pipeline Alias
 
 A pipeline alias runs a sequence of other aliases in order, stopping on the first failure.
 
@@ -176,7 +150,7 @@ cmd = cmake --build build
 cmd = ctest --test-dir build --output-on-failure
 ```
 
-### Project section
+### Project Section
 
 The `[project]` section in **repository** and **local project** config files controls script-level settings.
 
@@ -191,9 +165,7 @@ image      = myorg/custom-image:1.2.3   # override the profile image
 dockerfile = Dockerfile.dev             # build image from this Dockerfile
 ```
 
----
-
-## Environment variables
+## Environment Variables
 
 The `env` key (in both profile and alias sections) accepts a comma-separated list of variable specs:
 
@@ -202,7 +174,6 @@ The `env` key (in both profile and alias sections) accepts a comma-separated lis
 | `KEY` | Pass the host value of `KEY` into the container. Skipped silently if `KEY` is unset on the host. |
 | `KEY=VALUE` | Set `KEY` to the literal string `VALUE`. |
 | `KEY=$(cmd)` | Evaluate `cmd` on the host at run time; use its stdout as the value. |
-| `KEY=\`cmd\`` | Same as above, backtick style. |
 
 **Examples:**
 
@@ -227,13 +198,10 @@ dex -e 'JOBS=8,VERBOSE=1' build  # or comma-separate in one -e
 dex -e 'TOKEN=$(cat ~/.token)' build  # command substitution works too
 ```
 
----
+## Example Files
 
-
-## Example files
-
-| File | Description |
-|------|-------------|
-| [`dex.conf.example`](dex.conf.example) | Global config template — copy to `~/.dex.conf`. Defines profiles, aliases, and pipelines. |
-| [`dex.repo.conf.example`](dex.repo.conf.example) | Repository config template — copy to `<git-root>/.dex.conf`. Committed and shared with the team. |
-| [`dex.d/example.conf`](dex.d/example.conf) | Local project config template — copy to `~/.dex.d/<project>.conf`. Personal, never committed. |
+| File | Description | Location |
+|------|-------------|----------|
+| [`dex.conf.example`](dex.conf.example) | Global configuration | `~/.dex.conf`/`~/.local/share/.dex.conf` |
+| [`dex.repo.conf.example`](dex.repo.conf.example) | Repository configuration | `<git-root>/.dex.conf` |
+| [`dex.d/example.conf`](dex.d/example.conf) | Local project configration | `~/.dex.d/<project>.conf`/`~/.local/share/.dex.d/<project>.conf` |
