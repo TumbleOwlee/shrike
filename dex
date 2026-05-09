@@ -399,6 +399,32 @@ container_name_from_path() {
 }
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Print docker build header
+# ──────────────────────────────────────────────────────────────────────────────
+
+print_docker_build_header() {
+    local _cmd="$1"
+
+    local B="" CY="" YL="" GN="" RD="" R=""
+    if [[ -t 2 ]]; then
+        B="\033[1m"
+        CY="\033[1;36m"
+        MG="\033[1;35m"
+        YL="\033[1;33m"
+        GN="\033[1;32m"
+        RD="\033[1;31m"
+        R="\033[0m"
+    fi
+
+    # Line widths (display columns) must total 68 each:
+    local hdr_line="────────────────────────────────────────────────────$(_line_extension)"
+    local sep_line="└───────────────────────────────────────────────────────────────────$(_line_extension)"
+    printf >&2 "${MG}\r ┌─ docker build %s${R}\n" "$hdr_line"
+    printf >&2 "${MG}\r │${R} ${B}Run:${R} ${YL}%s${R}\n" "$_cmd"
+    printf >&2 "${RD}\r %s${R}\n" "$sep_line"
+}
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Image & container lifecycle
 # ──────────────────────────────────────────────────────────────────────────────
 ensure_image() {
@@ -406,6 +432,7 @@ ensure_image() {
     if [[ -n "$dockerfile" ]]; then
         [[ -f "$dockerfile" ]] || die "Dockerfile not found: ${_CGR}${dockerfile}${_CR}"
         if [[ "$force_rebuild" == "1" ]] || ! docker image inspect "$image" &>/dev/null; then
+            print_docker_build_header "docker build -t \"$image\" -f \"$dockerfile\" \"$(dirname "$dockerfile")\""
             info "Building image '${_CYL}${image}${_CR}' from ${_CGR}${dockerfile}${_CR} ..."
             docker build -t "$image" -f "$dockerfile" "$(dirname "$dockerfile")"
         fi
@@ -489,7 +516,7 @@ _rolling_display() {
     local PFX="   │ "
     if [[ -t 1 ]]; then
         is_tty=1
-        PFX="   \033[36m│\033[0m "
+        PFX="   \033[31m│\033[0m "
         local _tw=$_TERM_COLS
         [[ "$_tw" =~ ^[0-9]+$ ]] || _tw=80
         # Subtract the 5 display columns used by the "   │ " prefix.
@@ -612,11 +639,12 @@ _line_extension() {
 print_footer() {
     local exit_code="$1" elapsed_ms="$2" logfile="${3:-}"
 
-    local B="" CY="" YL="" GN="" RD="" R=""
+    local B="" CY="" YL="" GN="" RD="" R="" MG=""
     if [[ -t 2 ]]; then
         B="\033[1m"
         CY="\033[1;36m"
         YL="\033[1;33m"
+        MG="\033[1;35m"
         GN="\033[1;32m"
         RD="\033[1;31m"
         R="\033[0m"
@@ -639,13 +667,13 @@ print_footer() {
     #   footer       = └ + 67 ─ chars  = 68 display cols
     local hdr_line="──────────────────────────────────────────────────────────$(_line_extension)"
     local sep_line="└───────────────────────────────────────────────────────────────────$(_line_extension)"
-    printf >&2 "${CY}\r ┌─ result %s${R}\n" "$hdr_line"
-    printf >&2 "${CY}\r │${R} ${B}Status   :${R} ${status_color}%s${R}\n" "$status_label"
-    printf >&2 "${CY}\r │${R} ${B}Duration :${R} %s\n" "$duration"
+    printf >&2 "${RD}\r ┌─ result %s${R}\n" "$hdr_line"
+    printf >&2 "${MG}\r │${R} ${B}Status   :${R} ${status_color}%s${R}\n" "$status_label"
+    printf >&2 "${MG}\r │${R} ${B}Duration :${R} %s\n" "$duration"
     if [[ -n "$logfile" ]]; then
-        printf >&2 "${CY}\r │${R} ${B}Log      :${R} ${YL}%s${R}\n" "$logfile"
+        printf >&2 "${MG}\r │${R} ${B}Log      :${R} ${YL}%s${R}\n" "$logfile"
     fi
-    printf >&2 "${CY}\r %s${R}\n\n" "$sep_line"
+    printf >&2 "${MG}\r %s${R}\n\n" "$sep_line"
 }
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -773,11 +801,13 @@ print_summary() {
         ports_display="${7:-}"
 
     # ANSI colors — only when stderr is a terminal
-    local B="" CY="" YL="" GR="" DIM="" R=""
+    local B="" CY="" YL="" GR="" DIM="" R="" MG="" RD=""
     if [[ -t 2 ]]; then
         B="\033[1m"
         CY="\033[1;36m"
         YL="\033[1;33m"
+        MG="\033[1;35m"
+        RD="\033[1;31m"
         GR="\033[0;32m"
         DIM="\033[2m"
         R="\033[0m"
@@ -787,23 +817,94 @@ print_summary() {
     # " ┌─ dex " = 8 display cols  →  61 ─ chars gives total width of 69
     # footer: " └" + 67 ─ chars = 69 display cols (same total)
     local footer="└───────────────────────────────────────────────────────────────────$(_line_extension)"
-    printf >&2 "\n${CY} ┌─ dex %s${R}\n" "$line"
-    printf >&2 "${CY} │${R} ${B}Profile   :${R} ${YL}%s${R}\n" "$profile"
-    printf >&2 "${CY} │${R} ${B}Image     :${R} %s\n" "$image"
-    printf >&2 "${CY} │${R} ${B}Container :${R} ${DIM}%s${R}\n" "$container"
+    printf >&2 "\n${MG} ┌─ dex %s${R}\n" "$line"
+    printf >&2 "${MG} │${R} ${B}Profile   :${R} ${YL}%s${R}\n" "$profile"
+    printf >&2 "${MG} │${R} ${B}Image     :${R} %s\n" "$image"
+    printf >&2 "${MG} │${R} ${B}Container :${R} ${DIM}%s${R}\n" "$container"
     if [[ -n "$ports_display" ]]; then
-        printf >&2 "${CY} │${R} ${B}Ports     :${R} ${GR}%s${R}\n" "$ports_display"
+        printf >&2 "${MG} │${R} ${B}Ports     :${R} ${GR}%s${R}\n" "$ports_display"
     fi
-    printf >&2 "${CY} │${R} ${B}Directory :${R} ${GR}%s${R}\n" "$workdir"
+    printf >&2 "${MG} │${R} ${B}Directory :${R} ${GR}%s${R}\n" "$workdir"
     if [[ "$STEP_INTERACTIVE" == "1" ]]; then
-        printf >&2 "${CY} │${R} ${B}Command   :${R} ${YL}%s${R} ${CY}(interactive)${R}\n" "$cmd"
+        printf >&2 "${MG} │${R} ${B}Command   :${R} ${YL}%s${R} ${CY}(interactive)${R}\n" "$cmd"
     else
-        printf >&2 "${CY} │${R} ${B}Command   :${R} ${YL}%s${R}\n" "$cmd"
+        printf >&2 "${MG} │${R} ${B}Command   :${R} ${YL}%s${R}\n" "$cmd"
     fi
     if [[ -n "$env_display" ]]; then
-        printf >&2 "${CY} │${R} ${B}Env       :${R} ${GR}%s${R}\n" "$env_display"
+        printf >&2 "${MG} │${R} ${B}Env       :${R} ${GR}%s${R}\n" "$env_display"
     fi
-    printf >&2 "${CY} %s${R}\n" "$footer"
+    printf >&2 "${RD} %s${R}\n" "$footer"
+}
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Generate new project configuration  (--new / -n)
+# ──────────────────────────────────────────────────────────────────────────────
+
+generate_new() {
+    local _tmpl="$1"
+    local GIT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)"  ||
+        die "Not inside a git repository."
+
+    [[ ! -f "${GIT_ROOT}/.dex.conf" ]] || die "'${_CYL}${GIT_ROOT}/.dex.conf${_CR}' already exists."
+
+    printf \
+'[project]
+profile = default' > "${GIT_ROOT}/.dex.conf"
+
+    if [[ -z "$_tmpl" ]]; then
+        printf '
+
+[default]
+image = alpine:latest
+
+[alias:shell]
+desc = Run shell.
+cmd = /bin/sh
+interactive = true' >> "${GIT_ROOT}/.dex.conf"
+    elif [[ "$_tmpl" = "cmake" ]]; then
+        # Create directory if missing
+        if [[ ! -d "${GIT_ROOT}/.dex" ]]; then
+            mkdir "${GIT_ROOT}/.dex"
+        fi
+
+        # Generate basic configuration
+        printf '
+
+[default]
+dockerfile = .dex/cmake.Dockerfile
+
+[alias:configure]
+desc = Run configure.
+cmd = cmake -S ${SOURCE_DIR} -B ${BUILD_DIR} -G Ninja
+env = SOURCE_DIR=.,BUILD_DIR=./build
+
+[alias:build]
+desc = Run build.
+cmd = cmake --build ${BUILD_DIR} --target all -j$JOBS
+env = BUILD_DIR=./build,JOBS=$(nproc)
+
+[alias:test]
+desc = Run tests.
+cmd = cmake --build ${BUILD_DIR} --target test -j$JOBS
+env = BUILD_DIR=./build
+interactive = false
+
+[alias:ci]
+desc = Run pipeline.
+pipeline = configure,build,test' >> "${GIT_ROOT}/.dex.conf"
+
+        # Generate dockerfile
+        if [[ ! -f "${GIT_ROOT}/.dex/cmake.Dockerfile" ]]; then
+            printf \
+'FROM debian:bookworm-slim
+# Install dependencies
+RUN apt-get update && apt-get install -y cmake build-essential ninja-build && apt-get clean' > "${GIT_ROOT}/.dex/cmake.Dockerfile"
+        else
+            warn "'${_CYL}${GIT_ROOT}/.dex/cmake.Dockerfile${_CR}' already exists."
+        fi
+    else
+        die "'Unknown template '${_CYL}$1${_CR}' specified."
+    fi
 }
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -814,14 +915,16 @@ print_summary() {
 # Outputs to stdout; uses ANSI only when stdout is a terminal.
 # ──────────────────────────────────────────────────────────────────────────────
 list_aliases() {
-    local B="" CY="" YL="" GR="" DIM="" MG="" R=""
+    local B="" CY="" YL="" GR="" DIM="" MG="" R="" RD="" YLN=""
     if [[ -t 1 ]]; then
         B=$'\033[1m'
-        CY=$'\033[1;36m'
+        CY=$'\033[0;36m'
         YL=$'\033[1;33m'
+        YLN=$'\033[0;33m'
         GR=$'\033[0;32m'
         DIM=$'\033[2m'
         MG=$'\033[1;35m'
+        RD=$'\033[1;31m'
         R=$'\033[0m'
     fi
 
@@ -830,22 +933,22 @@ list_aliases() {
     local _sep="└───────────────────────────────────────────────────────────────────$(_line_extension)"
     local _ftr="  └─────────────────────────────────────────────────────────────────$(_line_extension)"
 
-    printf "${CY} ┌─ dex aliases %s${R}\n" "$_hdr_dashes"
-    printf "${CY} │${R} ${B}Profile  :${R} ${YL}%s${R}\n" "$PROFILE_NAME"
-    printf "${CY} │${R} ${B}Image    :${R} %s\n" "$FINAL_IMAGE"
+    printf "${MG} ┌─ dex aliases %s${R}\n" "$_hdr_dashes"
+    printf "${MG} │${R} ${B}Profile  :${R} ${YL}%s${R}\n" "$PROFILE_NAME"
+    printf "${MG} │${R} ${B}Image    :${R} %s\n" "$FINAL_IMAGE"
     if [[ -f "$GLOBAL_CONFIG" ]]; then
-        printf "${CY} │${R} ${B}Global   :${R} ${DIM}%s${R}\n" "$GLOBAL_CONFIG"
+        printf "${MG} │${R} ${B}Global   :${R} ${DIM}%s${R}\n" "$GLOBAL_CONFIG"
     fi
     if [[ -n "$REPO_CONFIG" ]]; then
-        printf "${CY} │${R} ${B}Repo     :${R} ${CY}%s${R}\n" "$REPO_CONFIG"
+        printf "${MG} │${R} ${B}Repo     :${R} ${CY}%s${R}\n" "$REPO_CONFIG"
     fi
     if [[ -n "$PROJECT_FILE" ]]; then
-        printf "${CY} │${R} ${B}Local    :${R} ${DIM}%s${R}\n" "$PROJECT_FILE"
+        printf "${MG} │${R} ${B}Local    :${R} ${DIM}%s${R}\n" "$PROJECT_FILE"
     fi
     if [[ -n "$PROFILE_ENV" ]]; then
-        printf "${CY} │${R} ${B}Base env :${R} ${GR}%s${R}\n" "$PROFILE_ENV"
+        printf "${MG} │${R} ${B}Base env :${R} ${GR}%s${R}\n" "$PROFILE_ENV"
     fi
-    printf "${CY} %s${R}\n" "$_sep"
+    printf "${RD} %s${R}\n" "$_sep"
 
     # Collect unique alias names from both maps, then sort alphabetically.
     # Hidden aliases (hidden = true) are excluded from the listing.
@@ -878,7 +981,7 @@ list_aliases() {
         local _first=1
         for _n in "${_names[@]}"; do
             # Blank line between entries for readability.
-            [[ "$_first" == "1" ]] && _first=0 || printf "${CY}   │${R}\n"
+            [[ "$_first" == "1" ]] && _first=0 || printf "${RD}   │${R}\n"
 
             if [[ -n "${ALIAS_PIPELINE[$_n]-}" ]]; then
                 # Pipeline alias: show steps as a chain.
@@ -889,12 +992,12 @@ list_aliases() {
 
                 if [[ -n "$_desc" ]]; then
                     local _meta="${YL}${_desc}${R}    "
-                    printf "${CY}   │${R}  ${MG}%-${_length}s${R} %-8s %s\n" "$_n" "desc:" "$_meta"
+                    printf "${RD}   │${R}  ${MG}%-${_length}s${R} %-8s %s\n" "$_n" "desc:" "$_meta"
                     _n=""
-                    printf "${CY}   │${R}  ${MG}%-${_length}s${R} ${CY}[pipeline]${R}  %s\n" \
+                    printf "${RD}   │${R}  ${MG}%-${_length}s${R} ${MG}[pipeline]${R}  %s\n" \
                         "" "$_steps_fmt"
                 else
-                    printf "${CY}   │${R}  ${MG}%-${_length}s${R} ${CY}[pipeline]${R}  %s\n" \
+                    printf "${RD}   │${R}  ${MG}%-${_length}s${R} ${MG}[pipeline]${R}  %s\n" \
                         "$_n" "$_steps_fmt"
                 fi
             else
@@ -908,25 +1011,25 @@ list_aliases() {
                 # Second line: always show workdir; show alias-level env if set.
                 if [[ -n "$_desc" ]]; then
                     local _meta="${YL}${_desc}${R}    "
-                    printf "${CY}   │${R}  ${YL}%-${_length}s${R} %-8s %s\n" "$_n" "desc:" "$_meta"
+                    printf "${RD}   │${R}  ${YL}%-${_length}s${R} %-8s %s\n" "$_n" "desc:" "$_meta"
                     _n=""
                 fi
 
                 local _tags=""
-                [[ "$_int" == "true" ]] && _tags="  ${MG}(interactive)${R}"
-                printf "${CY}   │${R}  ${YL}%-${_length}s${R} %-8s ${DIM}%s${R}%s\n" "$_n" "command:" "$_cmd" "$_tags"
+                [[ "$_int" == "true" ]] && _tags="  ${RD}(interactive)${R}"
+                printf "${RD}   │${R}  ${YL}%-${_length}s${R} %-8s ${CY}%s${R}%s\n" "$_n" "command:" "$_cmd" "$_tags"
 
                 local _meta="${GR}${_workdir}${R}"
-                printf "${CY}   │${R}  %-${_length}s %-8s %s\n" "" "workdir:" "$_meta"
+                printf "${RD}   │${R}  %-${_length}s %-8s %s\n" "" "workdir:" "$_meta"
                 if [[ -n "$_aenv" ]]; then
-                    local _meta="${YL}${_aenv}${R}"
-                    printf "${CY}   │${R}  %-${_length}s %-8s %s\n" "" "env:" "$_meta"
+                    local _meta="${YLN}${_aenv}${R}"
+                    printf "${RD}   │${R}  %-${_length}s %-8s %s\n" "" "env:" "$_meta"
                 fi
             fi
         done
     fi
 
-    printf "${CY} %s${R}\n" "$_ftr"
+    printf "${RD} %s${R}\n" "$_ftr"
 }
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -951,6 +1054,7 @@ show_help() {
 
     printf "\n${CY}Options${R}\n"
     printf "  ${YL}-h${R}, ${YL}--help${R}               Show this help message and exit\n"
+    printf "  ${YL}-n${R}, ${YL}--new${R} ${B}[template]${R}               Generate new project configuration.\n"
     printf "  ${YL}-l${R}, ${YL}--list${R}               List all aliases for the selected profile and exit\n"
     printf "  ${YL}-p${R}, ${YL}--profile${R} ${B}<profile>${R}  Select a named profile\n"
     printf "  ${YL}-e${R}, ${YL}--env${R} ${B}<spec>${R}         Extra environment variables (overrides config).\n"
@@ -1052,6 +1156,10 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         -h | --help)
             show_help
+            exit 0
+            ;;
+        -n | --new)
+            generate_new "$2"
             exit 0
             ;;
         -b | --rebuild)
