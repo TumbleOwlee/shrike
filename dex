@@ -170,6 +170,7 @@ declare -A ALIAS_ENV=()
 declare -A ALIAS_PIPELINE=()
 declare -A ALIAS_INTERACTIVE=()
 declare -A ALIAS_HIDDEN=()
+declare -A ALIAS_USER=()
 
 # Load a profile section and its alias sub-sections from the lowest-priority
 # source that defines the profile (global config first, then repo config, then
@@ -208,6 +209,7 @@ load_profile() {
         ALIAS_PIPELINE["$aname"]="$(ini_get "$_src" "$section" "pipeline")"
         ALIAS_INTERACTIVE["$aname"]="$(ini_get "$_src" "$section" "interactive")"
         ALIAS_HIDDEN["$aname"]="$(ini_get "$_src" "$section" "hidden")"
+        ALIAS_USER["$aname"]="$(ini_get "$_src" "$section" "user")"
     done < <(ini_sections "$_src")
 }
 
@@ -274,7 +276,7 @@ _apply_config_layer() {
         [[ -n "$_pports" ]] && PROFILE_PORTS="$_pports"
     fi
 
-    local section aname cmd desc workdir aenv apipeline ainteractive ahidden
+    local section aname cmd desc workdir aenv apipeline ainteractive ahidden auser
 
     # Pass 1: profile-scoped aliases (alias:<profile>:<name>).
     local _prefix="alias:${profile}:"
@@ -288,6 +290,7 @@ _apply_config_layer() {
         apipeline="$(ini_get "$src" "$section" "pipeline")"
         ainteractive="$(ini_get "$src" "$section" "interactive")"
         ahidden="$(ini_get "$src" "$section" "hidden")"
+        auser="$(ini_get "$src" "$section" "user")"
         [[ -n "$cmd" ]] && ALIAS_CMD["$aname"]="$cmd"
         [[ -n "$desc" ]] && ALIAS_DESC["$aname"]="$desc"
         [[ -n "$workdir" ]] && ALIAS_WORKDIR["$aname"]="$workdir"
@@ -295,6 +298,7 @@ _apply_config_layer() {
         [[ -n "$apipeline" ]] && ALIAS_PIPELINE["$aname"]="$apipeline"
         [[ -n "$ainteractive" ]] && ALIAS_INTERACTIVE["$aname"]="$ainteractive"
         [[ -n "$ahidden" ]] && ALIAS_HIDDEN["$aname"]="$ahidden"
+        [[ -n "$auser" ]] && ALIAS_USER["$aname"]="$auser"
     done < <(ini_sections "$src")
 
     # Pass 2: unscoped aliases (alias:<name>) — higher precedence within this layer.
@@ -309,6 +313,7 @@ _apply_config_layer() {
         apipeline="$(ini_get "$src" "$section" "pipeline")"
         ainteractive="$(ini_get "$src" "$section" "interactive")"
         ahidden="$(ini_get "$src" "$section" "hidden")"
+        auser="$(ini_get "$src" "$section" "user")"
         [[ -n "$cmd" ]] && ALIAS_CMD["$aname"]="$cmd"
         [[ -n "$desc" ]] && ALIAS_DESC["$aname"]="$desc"
         [[ -n "$workdir" ]] && ALIAS_WORKDIR["$aname"]="$workdir"
@@ -316,6 +321,7 @@ _apply_config_layer() {
         [[ -n "$apipeline" ]] && ALIAS_PIPELINE["$aname"]="$apipeline"
         [[ -n "$ainteractive" ]] && ALIAS_INTERACTIVE["$aname"]="$ainteractive"
         [[ -n "$ahidden" ]] && ALIAS_HIDDEN["$aname"]="$ahidden"
+        [[ -n "$auser" ]] && ALIAS_USER["$aname"]="$auser"
     done < <(ini_sections "$src")
 }
 
@@ -689,6 +695,7 @@ print_footer() {
 # Returns the step's exit code.  Does NOT re-raise signals or call exit.
 # ──────────────────────────────────────────────────────────────────────────────
 STEP_INTERACTIVE=0
+EXEC_USER=""
 _STEP_SIG_RECEIVED=""
 _active_tmpfifo="" # cleaned up by EXIT trap if script dies mid-step
 
@@ -696,6 +703,10 @@ run_exec_step() {
     local _step_start_ms _logfile="${1:-}"
     _step_start_ms="$(_now_ms)"
     _STEP_SIG_RECEIVED=""
+
+    # Build --user flag if a user was specified for this step.
+    local -a _user_flag=()
+    [[ -n "$EXEC_USER" ]] && _user_flag=("--user" "$EXEC_USER")
 
     if [[ "$STEP_INTERACTIVE" == "1" ]]; then
         # Interactive: foreground docker exec; trap INT to prevent bash's default
@@ -705,10 +716,10 @@ run_exec_step() {
 
         local _exit=0
         if [[ "$USE_ALIAS" == "1" ]]; then
-            docker exec -it -w "$EXEC_WORKDIR" "${ENV_FLAGS[@]}" "$CONTAINER_NAME" \
+            docker exec -it "${_user_flag[@]}" -w "$EXEC_WORKDIR" "${ENV_FLAGS[@]}" "$CONTAINER_NAME" \
                 sh -c "$EXEC_CMD ${EXEC_ARGS[@]}" || _exit=$?
         else
-            docker exec -it -w "$EXEC_WORKDIR" "${ENV_FLAGS[@]}" "$CONTAINER_NAME" \
+            docker exec -it "${_user_flag[@]}" -w "$EXEC_WORKDIR" "${ENV_FLAGS[@]}" "$CONTAINER_NAME" \
                 "${EXEC_ARGS[@]}" || _exit=$?
         fi
         trap - INT
@@ -742,15 +753,16 @@ run_exec_step() {
             printf 'Command   : %s\n' "$DISPLAY_CMD"
             printf 'Directory : %s\n' "$EXEC_WORKDIR"
             [[ -n "$ENV_DISPLAY" ]] && printf 'Env       : %s\n' "$ENV_DISPLAY"
+            [[ -n "$EXEC_USER" ]] && printf 'User      : %s\n' "$EXEC_USER"
             printf '=%.0s' {1..80}
             printf '\n'
         } >>"$_logfile"
 
         if [[ "$USE_ALIAS" == "1" ]]; then
-            docker exec -w "$EXEC_WORKDIR" "${ENV_FLAGS[@]}" "$CONTAINER_NAME" \
+            docker exec "${_user_flag[@]}" -w "$EXEC_WORKDIR" "${ENV_FLAGS[@]}" "$CONTAINER_NAME" \
                 sh -c "$EXEC_CMD ${EXEC_ARGS[@]}" >"$_tmpfifo"  2>&1 &
         else
-            docker exec -w "$EXEC_WORKDIR" "${ENV_FLAGS[@]}" "$CONTAINER_NAME" \
+            docker exec "${_user_flag[@]}" -w "$EXEC_WORKDIR" "${ENV_FLAGS[@]}" "$CONTAINER_NAME" \
                 "${EXEC_ARGS[@]}" >"$_tmpfifo"  2>&1 &
         fi
         _docker_pid=$!
@@ -833,6 +845,9 @@ print_summary() {
     if [[ -n "$env_display" ]]; then
         printf >&2 "${MG} │${R} ${B}Env       :${R} ${GR}%s${R}\n" "$env_display"
     fi
+    if [[ -n "$EXEC_USER" ]]; then
+        printf >&2 "${MG} │${R} ${B}User      :${R} ${GR}%s${R}\n" "$EXEC_USER"
+    fi
     printf >&2 "${RD} %s${R}\n" "$footer"
 }
 
@@ -877,16 +892,19 @@ dockerfile = .dex/cmake.Dockerfile
 desc = Run configure.
 cmd = cmake -S ${SOURCE_DIR} -B ${BUILD_DIR} -G Ninja
 env = SOURCE_DIR=.,BUILD_DIR=./build
+user = $(id -u):$(id -g)
 
 [alias:build]
 desc = Run build.
 cmd = cmake --build ${BUILD_DIR} --target all -j$JOBS
 env = BUILD_DIR=./build,JOBS=$(nproc)
+user = $(id -u):$(id -g)
 
 [alias:test]
 desc = Run tests.
 cmd = cmake --build ${BUILD_DIR} --target test -j$JOBS
 env = BUILD_DIR=./build
+user = $(id -u):$(id -g)
 interactive = false
 
 [alias:ci]
@@ -896,7 +914,7 @@ pipeline = configure,build,test' >>"${GIT_ROOT}/.dex.conf"
         # Generate dockerfile
         if [[ ! -f "${GIT_ROOT}/.dex/cmake.Dockerfile" ]]; then
             printf \
-                'FROM debian:bookworm-slim
+'FROM debian:trixie-slim
 # Install dependencies
 RUN apt-get update && apt-get install -y cmake build-essential ninja-build && apt-get clean' >"${GIT_ROOT}/.dex/cmake.Dockerfile"
         else
@@ -1007,6 +1025,7 @@ list_aliases() {
                 local _workdir="${ALIAS_WORKDIR[$_n]:-$CONTAINER_MOUNT}"
                 local _aenv="${ALIAS_ENV[$_n]-}"
                 local _int="${ALIAS_INTERACTIVE[$_n]-}"
+                local _auser="${ALIAS_USER[$_n]-}"
 
                 # Second line: always show workdir; show alias-level env if set.
                 if [[ -n "$_desc" ]]; then
@@ -1024,6 +1043,10 @@ list_aliases() {
                 if [[ -n "$_aenv" ]]; then
                     local _meta="${YLN}${_aenv}${R}"
                     printf "${RD}   │${R}  %-${_length}s %-8s %s\n" "" "env:" "$_meta"
+                fi
+                if [[ -n "$_auser" ]]; then
+                    local _meta="${YLN}${_auser}${R}"
+                    printf "${RD}   │${R}  %-${_length}s %-8s %s\n" "" "user:" "$_meta"
                 fi
             fi
         done
@@ -1347,6 +1370,16 @@ _setup_step() {
         eval "EXEC_WORKDIR=${EXEC_WORKDIR}"
     fi
     EXEC_CMD="${ALIAS_CMD[$step_alias]}"
+    # Resolve user for docker exec --user; evaluate command substitutions on the host.
+    local _rawuser="${ALIAS_USER[$step_alias]-}"
+    EXEC_USER=""
+    if [[ -n "$_rawuser" ]]; then
+        if [[ "$_rawuser" == *'$('* || "$_rawuser" == *'`'* ]]; then
+            eval "EXEC_USER=${_rawuser}"
+        else
+            EXEC_USER="$_rawuser"
+        fi
+    fi
     # A step is interactive if the alias declares it OR the global -I flag is set.
     if [[ "${ALIAS_INTERACTIVE[$step_alias]-}" == "true" || "$INTERACTIVE" == "1" ]]; then
         STEP_INTERACTIVE=1
