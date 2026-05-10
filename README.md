@@ -45,6 +45,7 @@ directory is translated to the equivalent path in the container automatically.
 Options
   -h, --help               Show this help message and exit
   -l, --list               List all aliases for the selected profile and exit
+  -L, --list-profiles      List all known profiles across config files and exit
   -p, --profile <profile>  Select a named profile
   -e, --env <spec>         Extra environment variables (overrides config).
                            Accepts comma-separated specs: KEY=val,OTHER=val

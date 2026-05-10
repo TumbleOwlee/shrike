@@ -1040,6 +1040,120 @@ RUN apt-get update && apt-get install -y cmake build-essential ninja-build && ap
 }
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Profile listing  (--list-profiles / -L)
+# Reads from globals: PROFILE_NAME, GLOBAL_CONFIG, REPO_CONFIG, PROJECT_FILE
+# Outputs to stdout; uses ANSI only when stdout is a terminal.
+# ──────────────────────────────────────────────────────────────────────────────
+list_profiles() {
+    local B="" CY="" YL="" GR="" DIM="" MG="" R="" RD="" YLN=""
+    if [[ -t 1 ]]; then
+        B=$'\033[1m'
+        CY=$'\033[0;36m'
+        YL=$'\033[1;33m'
+        YLN=$'\033[0;33m'
+        GR=$'\033[0;32m'
+        DIM=$'\033[2m'
+        MG=$'\033[1;35m'
+        RD=$'\033[1;31m'
+        R=$'\033[0m'
+    fi
+
+    local _hdr_dashes="──────────────────────────────────────────────────────$(_line_extension)"
+    local _sep="└───────────────────────────────────────────────────────────────────$(_line_extension)"
+    local _ftr="  └─────────────────────────────────────────────────────────────────$(_line_extension)"
+
+    printf "${MG} ┌─ dex profiles %s${R}\n" "$_hdr_dashes"
+    printf "${MG} │${R} ${B}Active   :${R} ${YL}%s${R}\n" "$PROFILE_NAME"
+    if [[ -f "$GLOBAL_CONFIG" ]]; then
+        printf "${MG} │${R} ${B}Global   :${R} ${DIM}%s${R}\n" "$GLOBAL_CONFIG"
+    fi
+    if [[ -n "$REPO_CONFIG" ]]; then
+        printf "${MG} │${R} ${B}Repo     :${R} ${CY}%s${R}\n" "$REPO_CONFIG"
+    fi
+    if [[ -n "$PROJECT_FILE" ]]; then
+        printf "${MG} │${R} ${B}Local    :${R} ${DIM}%s${R}\n" "$PROJECT_FILE"
+    fi
+    printf "${RD} %s${R}\n" "$_sep"
+
+    # Build ordered list of source files and their display labels.
+    local -a _src_files=() _src_labels=()
+    [[ -f "$GLOBAL_CONFIG" ]] && { _src_files+=("$GLOBAL_CONFIG"); _src_labels+=("Global"); }
+    [[ -n "$REPO_CONFIG" ]] && { _src_files+=("$REPO_CONFIG"); _src_labels+=("Repo"); }
+    [[ -n "$PROJECT_FILE" ]] && { _src_files+=("$PROJECT_FILE"); _src_labels+=("Local"); }
+
+    # Collect all profile sections from all files.
+    # A section is a profile if it is not 'project' and does not start with 'alias:'.
+    local -A _profile_sources=()  # profile_name -> "Global, Repo, ..." label string
+    local _i _file _label _section
+    for (( _i = 0; _i < ${#_src_files[@]}; _i++ )); do
+        _file="${_src_files[$_i]}"
+        _label="${_src_labels[$_i]}"
+        while IFS= read -r _section; do
+            [[ "$_section" == "project" ]] && continue
+            [[ "$_section" == "alias:"* ]] && continue
+            if [[ -z "${_profile_sources[$_section]+x}" ]]; then
+                _profile_sources["$_section"]="$_label"
+            else
+                _profile_sources["$_section"]="${_profile_sources[$_section]}, $_label"
+            fi
+        done < <(ini_sections "$_file")
+    done
+
+    if [[ ${#_profile_sources[@]} -eq 0 ]]; then
+        printf "${CY}   │${R}  ${DIM}(no profiles defined)${R}\n"
+    else
+        local -a _pnames=()
+        local _n
+        while IFS= read -r _n; do
+            _pnames+=("$_n")
+        done < <(printf '%s\n' "${!_profile_sources[@]}" | sort)
+
+        local _first=1
+        for _n in "${_pnames[@]}"; do
+            [[ "$_first" == "1" ]] && _first=0 || printf "${RD}   │${R}\n"
+
+            # Resolve merged values for this profile (lowest→highest priority).
+            local _img="" _env="" _ports="" _dockerfile="" _v
+            for (( _i = 0; _i < ${#_src_files[@]}; _i++ )); do
+                _file="${_src_files[$_i]}"
+                ini_has_section "$_file" "$_n" || continue
+                _v="$(ini_get "$_file" "$_n" "image")"
+                [[ -n "$_v" ]] && _img="$_v"
+                _v="$(ini_get "$_file" "$_n" "env")"
+                [[ -n "$_v" ]] && _env="$_v"
+                _v="$(ini_get "$_file" "$_n" "ports")"
+                [[ -n "$_v" ]] && _ports="$_v"
+                _v="$(ini_get "$_file" "$_n" "dockerfile")"
+                if [[ -n "$_v" ]]; then
+                    [[ "$_v" != /* ]] && _v="$(dirname "$_file")/$_v"
+                    _dockerfile="$_v"
+                fi
+            done
+
+            local _sources="${_profile_sources[$_n]}"
+            local _name_color="${YL}"
+            local _active_tag=""
+            if [[ "$_n" == "$PROFILE_NAME" ]]; then
+                _name_color="${B}${YL}"
+                _active_tag="${RD}[★]${R} "
+            fi
+
+            if [[ -n "$_active_tag" ]]; then
+                printf "${RD}   │${R}  ${_active_tag}${_name_color}%-14s${R} ${DIM}[%s]${R}\n" "$_n" "$_sources"
+            else
+                printf "${RD}   │${R}      ${_name_color}%-14s${R} ${DIM}[%s]${R}\n" "$_n" "$_sources"
+            fi
+            [[ -n "$_img" ]] && printf "${RD}   │${R}      %-14s ${CY}%s${R}\n" "image:" "$_img"
+            [[ -n "$_dockerfile" ]] && printf "${RD}   │${R}      %-14s ${GR}%s${R}\n" "dockerfile:" "$_dockerfile"
+            [[ -n "$_env" ]] && printf "${RD}   │${R}      %-14s ${YLN}%s${R}\n" "env:" "$_env"
+            [[ -n "$_ports" ]] && printf "${RD}   │${R}      %-14s %s\n" "ports:" "$_ports"
+        done
+    fi
+
+    printf "${RD} %s${R}\n" "$_ftr"
+}
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Alias listing  (--list / -l)
 # Reads from globals: PROFILE_NAME, FINAL_IMAGE, PROFILE_ENV, GLOBAL_CONFIG,
 #   PROJECT_FILE, ALIAS_CMD, ALIAS_DESC, ALIAS_WORKDIR, ALIAS_ENV, ALIAS_PIPELINE,
@@ -1214,6 +1328,7 @@ show_help() {
     printf "  ${YL}-h${R}, ${YL}--help${R}               Show this help message and exit\n"
     printf "  ${YL}-n${R}, ${YL}--new${R} ${B}[template]${R}               Generate new project configuration.\n"
     printf "  ${YL}-l${R}, ${YL}--list${R}               List all aliases for the selected profile and exit\n"
+    printf "  ${YL}-L${R}, ${YL}--list-profiles${R}      List all known profiles across config files and exit\n"
     printf "  ${YL}-p${R}, ${YL}--profile${R} ${B}<profile>${R}  Select a named profile\n"
     printf "  ${YL}-e${R}, ${YL}--env${R} ${B}<spec>${R}         Extra environment variables (overrides config).\n"
     printf "                           ${DIM}Accepts comma-separated specs: KEY=val,OTHER=val${R}\n"
@@ -1276,6 +1391,7 @@ show_help() {
     printf "\n${CY}Examples${R}\n"
     printf "  ${YL}%s -l${R}                   ${DIM}# List all aliases for the active profile${R}\n" "$SCRIPT_NAME"
     printf "  ${YL}%s -l -p clang${R}          ${DIM}# List aliases for the 'clang' profile${R}\n" "$SCRIPT_NAME"
+    printf "  ${YL}%s -L${R}                   ${DIM}# List all known profiles across config files${R}\n" "$SCRIPT_NAME"
     printf "  ${YL}%s cmake -S . -B build${R}  ${DIM}# Run cmake (CWD mapped to %s/...)${R}\n" "$SCRIPT_NAME" "$CONTAINER_MOUNT"
     printf "  ${YL}%s build${R}                ${DIM}# Run the 'build' alias${R}\n" "$SCRIPT_NAME"
     printf "  ${YL}%s ci${R}                   ${DIM}# Run the 'ci' pipeline (configure → build → test)${R}\n" "$SCRIPT_NAME"
@@ -1306,6 +1422,7 @@ FORCE_RESTART=0
 FORCE_STOP=0
 STOP_ALL=0
 LIST_ALIASES=0
+LIST_PROFILES=0
 PROFILE_OVERRIDE=""
 INTERACTIVE=0
 CLI_ENV="" # extra env vars from -e / --env flags (comma-separated, highest priority)
@@ -1338,6 +1455,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         -l | --list)
             LIST_ALIASES=1
+            shift
+            ;;
+        -L | --list-profiles)
+            LIST_PROFILES=1
             shift
             ;;
         -I | --interactive)
@@ -1373,7 +1494,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if [[ $# -eq 0 && "$LIST_ALIASES" != "1" && "$FORCE_STOP" != "1" && "$FORCE_REBUILD" != "1" && "$STOP_ALL" != "1" ]]; then
+if [[ $# -eq 0 && "$LIST_ALIASES" != "1" && "$LIST_PROFILES" != "1" && "$FORCE_STOP" != "1" && "$FORCE_REBUILD" != "1" && "$STOP_ALL" != "1" ]]; then
     show_help
     exit 0
 fi
@@ -1488,6 +1609,12 @@ fi
 # ── List aliases and exit (--list / -l) ──────────────────────────────────────
 if [[ "$LIST_ALIASES" == "1" ]]; then
     list_aliases
+    exit 0
+fi
+
+# ── List profiles and exit (--list-profiles / -L) ────────────────────────────
+if [[ "$LIST_PROFILES" == "1" ]]; then
+    list_profiles
     exit 0
 fi
 
