@@ -1180,10 +1180,11 @@ list_profiles() {
 # Outputs to stdout; uses ANSI only when stdout is a terminal.
 # ──────────────────────────────────────────────────────────────────────────────
 list_aliases() {
-    local B="" CY="" YL="" GR="" DIM="" MG="" R="" RD="" YLN=""
+    local B="" CY="" YL="" GR="" DIM="" MG="" R="" RD="" YLN="" CYB=""
     if [[ -t 1 ]]; then
         B=$'\033[1m'
         CY=$'\033[0;36m'
+        CYB=$'\033[1;36m'
         YL=$'\033[1;33m'
         YLN=$'\033[0;33m'
         GR=$'\033[0;32m'
@@ -1304,7 +1305,7 @@ list_aliases() {
 
                 local _tags=""
                 [[ "$_int" == "true" ]] && _tags="  ${RD}(interactive)${R}"
-                printf "${RD}   │${R}  ${YL}%-${_length}s${R} %-8s ${CY}%s${R}%s\n" "$_n" "command:" "$_cmd" "$_tags"
+                printf "${RD}   │${R}  ${YL}%-${_length}s${R} %-8s ${CYB}%s${R}%s\n" "$_n" "command:" "$_cmd" "$_tags"
 
                 local _meta="${GR}${_workdir}${R}"
                 printf "${RD}   │${R}  %-${_length}s %-8s %s\n" "" "workdir:" "$_meta"
