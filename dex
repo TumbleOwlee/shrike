@@ -541,10 +541,11 @@ ensure_container() {
             docker start "$container" >/dev/null
         fi
     else
+        local _resolved_dex="$(readlink -f ${SCRIPT_DIR}/${SCRIPT_NAME})"
         info "Creating container '${_CDIM}${container}${_CR}' from image '${_CYL}${image}${_CR}' ..."
         docker run -d \
             --name "$container" \
-            -v "${SCRIPT_DIR}/${SCRIPT_NAME}:/bin/dex" \
+            -v "${_resolved_dex}:/bin/dex" \
             -v "${git_root}:${CONTAINER_MOUNT}" \
             "${_cfg_mounts[@]}" \
             "${_port_flags[@]}" \
