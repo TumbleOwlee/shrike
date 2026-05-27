@@ -1259,12 +1259,21 @@ list_aliases() {
                 if [[ -n "$_desc" ]]; then
                     local _meta="${YL}${_desc}${R}    "
                     printf "${RD}   │${R}  ${MG}%-${_length}s${R} %-8s %s\n" "$_n" "desc:" "$_meta"
-                    _n=""
                     printf "${RD}   │${R}  ${MG}%-${_length}s${R} ${MG}[pipeline]${R}  ${RD}%s${R}\n" \
                         "" "$_steps_fmt"
                 else
                     printf "${RD}   │${R}  ${MG}%-${_length}s${R} ${MG}[pipeline]${R}  ${RD}%s${R}\n" \
                         "$_n" "$_steps_fmt"
+                fi
+
+                # Show pipeline-level env if set.
+                #local _pipeline_env=""
+                #if [[ -n "${ALIAS_ENV}" ]]; then
+                local _pipeline_env="${ALIAS_ENV[$_n]-}"
+                #fi
+                if [[ -n "$_pipeline_env" ]]; then
+                    printf "${RD}   │${R}  %-${_length}s %-8s ${YLN}%s${R}\n" \
+                        "" "env:" "$_pipeline_env"
                 fi
 
                 # Show effective env for each step that has any env configured.
@@ -1276,8 +1285,9 @@ list_aliases() {
                     _step="${_step// /}" # trim whitespace
                     [[ -z "$_step" ]] && continue
                     _step_env="${ALIAS_ENV[$_step]-}"
-                    # Build combined env: profile base + step-specific env.
+                    # Build combined env: profile base + pipeline env + step-specific env.
                     _combined_step_env="$PROFILE_ENV"
+                    [[ -n "$_pipeline_env" ]] && _combined_step_env="${_combined_step_env}${_combined_step_env:+,}${_pipeline_env}"
                     [[ -n "$_step_env" ]] && _combined_step_env="${_combined_step_env}${_combined_step_env:+,}${_step_env}"
                     if [[ -n "$_combined_step_env" ]]; then
                         printf "${RD}   │${R}  %-${_length}s %-8s ${CY}%-14s${R} ${YLN}%s${R}\n" \
@@ -1696,7 +1706,10 @@ _setup_step() {
         DISPLAY_CMD="[${step_alias}] → ${EXEC_CMD} ${EXEC_ARGS[@]}"
     fi
     local _aenv="${ALIAS_ENV[$step_alias]-}"
+    local _pipeline_env=""
+    [[ -n "$pipeline_label" ]] && _pipeline_env="${ALIAS_ENV[$pipeline_label]-}"
     COMBINED_ENV="$PROFILE_ENV"
+    [[ -n "$_pipeline_env" ]] && COMBINED_ENV="${COMBINED_ENV}${COMBINED_ENV:+,}${_pipeline_env}"
     [[ -n "$_aenv" ]] && COMBINED_ENV="${COMBINED_ENV}${COMBINED_ENV:+,}${_aenv}"
     [[ -n "$CLI_ENV" ]] && COMBINED_ENV="${COMBINED_ENV}${COMBINED_ENV:+,}${CLI_ENV}"
     _apply_combined_env
