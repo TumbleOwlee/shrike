@@ -188,6 +188,7 @@ PROFILE_DOCKERFILE=""
 PROFILE_PORTS=""
 PROFILE_VOLUMES=""
 PROFILE_SETUP=""
+PROFILE_USER=
 PROJECT_FILE=""
 PROJECT_IMAGE=""
 PROJECT_DOCKERFILE=""
@@ -223,6 +224,15 @@ load_profile() {
     fi
     PROFILE_IMAGE="$(ini_get "$_src" "$profile" "image")"
     PROFILE_ENV="$(ini_get "$_src" "$profile" "env")"
+    PROFILE_USER="$(ini_get "$_src" "$profile" "user")"
+    if [[ -n "$PROFILE_USER" ]]; then
+        if [[ "$PROFILE_USER" == *'${'* || "$PROFILE_USER" == *'$('* || "$PROFILE_USER" == *'`'* ]]; then
+            eval "PROFILE_USER=${PROFILE_USER}"
+        else
+            PROFILE_USER="$PROFILE_USER"
+        fi
+    fi
+
     PROFILE_DOCKERFILE="$(ini_get "$_src" "$profile" "dockerfile")"
     if [[ -n "$PROFILE_DOCKERFILE" && "$PROFILE_DOCKERFILE" != /* ]]; then
         PROFILE_DOCKERFILE="$(dirname "$_src")/${PROFILE_DOCKERFILE}"
@@ -854,7 +864,7 @@ print_footer() {
 # Returns the step's exit code.  Does NOT re-raise signals or call exit.
 # ──────────────────────────────────────────────────────────────────────────────
 STEP_INTERACTIVE=0
-EXEC_USER=""
+EXEC_USER="${PROFILE_USER}"
 _STEP_SIG_RECEIVED=""
 _active_tmpfifo="" # cleaned up by EXIT trap if script dies mid-step
 
@@ -1820,7 +1830,7 @@ _setup_step() {
     EXEC_CMD="${ALIAS_CMD[$step_alias]}"
     # Resolve user for docker exec --user; evaluate command substitutions on the host.
     local _rawuser="${ALIAS_USER[$step_alias]-}"
-    EXEC_USER=""
+    EXEC_USER="${PROFILE_USER}"
     if [[ -n "$_rawuser" ]]; then
         if [[ "$_rawuser" == *'${'* || "$_rawuser" == *'$('* || "$_rawuser" == *'`'* ]]; then
             eval "EXEC_USER=${_rawuser}"
