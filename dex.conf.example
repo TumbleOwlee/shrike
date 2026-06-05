@@ -28,6 +28,13 @@ image = ubuntu:22.04
 # modifying this key, remove the container first: docker rm -f <name>
 #ports = 8080:8080,5432:5432
 
+# Optional: comma-separated list of volume mounts to create when the container
+# is created (same format as 'docker run -v').
+#volumes = /host/path:/container/path,/another/host/path:/another/container/path
+
+# Optional: command to execute on container creation before any alias commands run. This is useful for setup steps that need to be done once per container, such as installing dependencies or setting up a database.
+#setup = sudo chown -R $(id -u):$(id -g) /workspace
+
 # Comma-separated list of environment variables to pass into the container.
 #   KEY            — pass the host value of KEY (skipped if KEY is unset on host)
 #   KEY=VALUE      — set KEY to a fixed VALUE regardless of the host environment

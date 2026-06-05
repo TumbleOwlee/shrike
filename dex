@@ -186,6 +186,8 @@ PROFILE_IMAGE=""
 PROFILE_ENV=""
 PROFILE_DOCKERFILE=""
 PROFILE_PORTS=""
+PROFILE_VOLUMES=""
+PROFILE_SETUP=""
 PROJECT_FILE=""
 PROJECT_IMAGE=""
 PROJECT_DOCKERFILE=""
@@ -226,6 +228,8 @@ load_profile() {
         PROFILE_DOCKERFILE="$(dirname "$_src")/${PROFILE_DOCKERFILE}"
     fi
     PROFILE_PORTS="$(ini_get "$_src" "$profile" "ports")"
+    PROFILE_VOLUMES="$(ini_get "$_src" "$profile" "volumes")"
+    PROFILE_SETUP="$(ini_get "$_src" "$profile" "setup")"
     local section _prefix="alias:${profile}:"
     while IFS= read -r section; do
         [[ "$section" == "${_prefix}"* ]] || continue
@@ -295,11 +299,13 @@ _apply_config_layer() {
 
     # Profile section: override individual profile fields if present.
     if ini_has_section "$src" "$profile"; then
-        local _pimg _penv _pdockerfile _pports
+        local _pimg _penv _pdockerfile _pports _pvolumes _psetup
         _pimg="$(ini_get "$src" "$profile" "image")"
         _penv="$(ini_get "$src" "$profile" "env")"
         _pdockerfile="$(ini_get "$src" "$profile" "dockerfile")"
         _pports="$(ini_get "$src" "$profile" "ports")"
+        _pvolumes="$(ini_get "$src" "$profile" "volumes")"
+        _psetup="$(ini_get "$src" "$profile" "setup")"
         [[ -n "$_pimg" ]] && PROFILE_IMAGE="$_pimg"
         [[ -n "$_penv" ]] && PROFILE_ENV="$_penv"
         if [[ -n "$_pdockerfile" ]]; then
@@ -307,6 +313,8 @@ _apply_config_layer() {
             PROFILE_DOCKERFILE="$_pdockerfile"
         fi
         [[ -n "$_pports" ]] && PROFILE_PORTS="$_pports"
+        [[ -n "$_pvolumes" ]] && PROFILE_VOLUMES="$_pvolumes"
+        [[ -n "$_psetup" ]] && PROFILE_SETUP="$_psetup"
     fi
 
     local section aname cmd desc workdir aenv apipeline ainteractive ahidden auser
@@ -487,7 +495,35 @@ ensure_image() {
 }
 
 ensure_container() {
-    local container="$1" image="$2" git_root="$3" ports_spec="${4:-}" force_restart="${5:-0}" force_stop="${6:-0}"
+    local container="$1" image="$2" git_root="$3" ports_spec="${4:-}" volumes_spec="${5:-}" force_restart="${6:-0}" force_stop="${7:-0}" env_spec="${8:-}" setup_cmd="${9:-}"
+
+    local -a _env_flags=()
+    if [[ -n "$env_spec" ]]; then
+        local IFS=',' _p
+        for _p in $env_spec; do
+            _p="${_p#"${_p%%[![:space:]]*}"}" # ltrim
+            _p="${_p%"${_p##*[![:space:]]}"}" # rtrim
+
+            if [[ -n "$_p" ]]; then
+                if [[ "$_p" == *=* ]]; then
+                    if [[ "$_p" == *'${'* || "$_p" == *'$('* || "$_p" == *'`'* ]]; then
+                        eval "_p=${_p}"
+                    else
+                        _p="$_p"
+                    fi
+                else
+                    if [[ -v "$_p" ]]; then
+                        _p="$_p=${!_p}"
+                    else
+                        _p=""
+                    fi
+                fi
+            fi
+
+            [[ -n "$_p" ]] && eval "export $_p"
+            [[ -n "$_p" ]] && _env_flags+=("-e" "$_p")
+        done
+    fi
 
     # Build -p flags from the comma-separated ports spec (e.g. "8080:80,443:443").
     local -a _port_flags=()
@@ -506,6 +542,28 @@ ensure_container() {
             fi
 
             [[ -n "$_p" ]] && _port_flags+=("-p" "$_p")
+        done
+    fi
+
+    # Build -v flags from the comma-separated volumes spec (e.g. "/home:/home").
+    local -a _volume_flags=()
+    if [[ -n "$volumes_spec" ]]; then
+        local IFS=',' _p
+        for _p in $volumes_spec; do
+            _p="${_p#"${_p%%[![:space:]]*}"}" # ltrim
+            _p="${_p%"${_p##*[![:space:]]}"}" # rtrim
+
+            if [[ -n "$_p" ]]; then
+                if [[ "$_p" == *'${'* || "$_p" == *'$('* || "$_p" == *'`'* ]]; then
+                    eval "_p=${_p}"
+                else
+                    _p="$_p"
+                fi
+            fi
+            local _p1="$(cut -f1 -d:<<<"$_p")"
+            local _p2="$(cut -f2- -d:<<<"$_p")"
+            local _p1_resolved="${_p1/#\~/$HOME}"
+            [[ -n "$_p" ]] && _volume_flags+=("-v" "$_p1_resolved:$_p2")
         done
     fi
 
@@ -548,8 +606,14 @@ ensure_container() {
             -v "${git_root}:${CONTAINER_MOUNT}" \
             "${_cfg_mounts[@]}" \
             "${_port_flags[@]}" \
+            "${_volume_flags[@]}" \
             "$image" \
             sleep infinity >/dev/null
+    fi
+
+    if [ -n "$setup_cmd" ]; then
+        info "Running setup command in container '${_CDIM}${container}${_CR}' ..."
+        docker exec "${_env_flags[@]}" "$container" sh -c "$setup_cmd"
     fi
 }
 
@@ -934,7 +998,7 @@ run_exec_step() {
 
 print_summary() {
     local profile="$1" image="$2" container="$3" workdir="$4" cmd="$5" env_display="$6" \
-        ports_display="${7:-}"
+        ports_display="${7:-}" volumes_display="${8:-}"
 
     # ANSI colors — only when stderr is a terminal
     local B="" CY="" YL="" GR="" DIM="" R="" MG="" RD=""
@@ -959,6 +1023,9 @@ print_summary() {
     printf >&2 "${MG} │${R} ${B}Container :${R} ${DIM}%s${R}\n" "$container"
     if [[ -n "$ports_display" ]]; then
         printf >&2 "${MG} │${R} ${B}Ports     :${R} ${GR}%s${R}\n" "$ports_display"
+    fi
+    if [[ -n "$volumes_display" ]]; then
+        printf >&2 "${MG} │${R} ${B}Volumes   :${R} ${GR}%s${R}\n" "$volumes_display"
     fi
     printf >&2 "${MG} │${R} ${B}Directory :${R} ${GR}%s${R}\n" "$workdir"
     if [[ "$STEP_INTERACTIVE" == "1" ]]; then
@@ -1131,7 +1198,7 @@ list_profiles() {
             [[ "$_first" == "1" ]] && _first=0 || printf "${RD}   │${R}\n"
 
             # Resolve merged values for this profile (lowest→highest priority).
-            local _img="" _env="" _ports="" _dockerfile="" _v
+            local _img="" _env="" _ports="" _volumes="" _dockerfile="" _v
             for ((_i = 0; _i < ${#_src_files[@]}; _i++)); do
                 _file="${_src_files[$_i]}"
                 ini_has_section "$_file" "$_n" || continue
@@ -1141,6 +1208,8 @@ list_profiles() {
                 [[ -n "$_v" ]] && _env="$_v"
                 _v="$(ini_get "$_file" "$_n" "ports")"
                 [[ -n "$_v" ]] && _ports="$_v"
+                _v="$(ini_get "$_file" "$_n" "volumes")"
+                [[ -n "$_v" ]] && _volumes="$_v"
                 _v="$(ini_get "$_file" "$_n" "dockerfile")"
                 if [[ -n "$_v" ]]; then
                     [[ "$_v" != /* ]] && _v="$(dirname "$_file")/$_v"
@@ -1165,6 +1234,7 @@ list_profiles() {
             [[ -n "$_dockerfile" ]] && printf "${RD}   │${R}      %-14s ${GR}%s${R}\n" "dockerfile:" "$_dockerfile"
             [[ -n "$_env" ]] && printf "${RD}   │${R}      %-14s ${YLN}%s${R}\n" "env:" "$_env"
             [[ -n "$_ports" ]] && printf "${RD}   │${R}      %-14s %s\n" "ports:" "$_ports"
+            [[ -n "$_volumes" ]] && printf "${RD}   │${R}      %-14s %s\n" "volumes:" "$_volumes"
         done
     fi
 
@@ -1409,6 +1479,14 @@ show_help() {
     printf "  ${DIM}[myprofile]${R}\n"
     printf "  ${DIM}ports = 8080:8080,5432:5432${R}\n"
 
+    printf "\n${CY}Volume mapping${R}\n"
+    printf "  Set ${YL}volumes${R} in a profile section to mount volumes when the container is created.\n"
+    printf "  Accepts the same format as ${B}docker run -v${R} (comma-separated).\n"
+    printf "  Volume bindings are fixed at container creation time; use ${YL}-r${R} to recreate.\n"
+    printf "\n"
+    printf "  ${DIM}[myprofile]${R}\n"
+    printf "  ${DIM}volumes = ~/:/dir,/home/:/home/${R}\n"
+
     printf "\n${CY}Pipeline example${R}\n"
     printf "  ${DIM}[alias:ci]${R}\n"
     printf "  ${DIM}pipeline = configure,build,test${R}\n"
@@ -1430,7 +1508,7 @@ show_help() {
     printf "  ${YL}%s -e A=1 -e B=2 build${R}  ${DIM}# Multiple env vars${R}\n" "$SCRIPT_NAME"
     printf "  ${YL}%s -b -r build${R}          ${DIM}# Rebuild image AND recreate container, then build${R}\n" "$SCRIPT_NAME"
     printf "  ${YL}%s -b${R}                   ${DIM}# Rebuild image only (no command)${R}\n" "$SCRIPT_NAME"
-    printf "  ${YL}%s -r build${R}             ${DIM}# Recreate container (e.g. after changing ports)${R}\n" "$SCRIPT_NAME"
+    printf "  ${YL}%s -r build${R}             ${DIM}# Recreate container (e.g. after changing ports and/or/volumes)${R}\n" "$SCRIPT_NAME"
     printf "  ${YL}%s -s${R}                   ${DIM}# Stop the current project's container${R}\n" "$SCRIPT_NAME"
     printf "  ${YL}%s -S${R}                   ${DIM}# Stop all dex-managed containers${R}\n" "$SCRIPT_NAME"
 
@@ -1666,7 +1744,7 @@ if [[ "$DEX_DIRECT_MODE" != "1" ]]; then
     # that was needed — skip container creation/start entirely.
     [[ "$USE_ALIAS" == "0" && $# -eq 0 ]] && exit 0
 
-    ensure_container "$CONTAINER_NAME" "$FINAL_IMAGE" "$GIT_ROOT" "$PROFILE_PORTS" "$FORCE_RESTART" "$FORCE_STOP"
+    ensure_container "$CONTAINER_NAME" "$FINAL_IMAGE" "$GIT_ROOT" "$PROFILE_PORTS" "$PROFILE_VOLUMES" "$FORCE_RESTART" "$FORCE_STOP" "$PROFILE_ENV" "$PROFILE_SETUP"
 else
     # In direct mode, -b and -r have no effect.
     [[ "$FORCE_REBUILD" == "1" ]] && warn "--rebuild has no effect inside a dex container."
@@ -1714,7 +1792,7 @@ _setup_step() {
     [[ -n "$CLI_ENV" ]] && COMBINED_ENV="${COMBINED_ENV}${COMBINED_ENV:+,}${CLI_ENV}"
     _apply_combined_env
     print_summary "$PROFILE_NAME" "$FINAL_IMAGE" "$CONTAINER_NAME" \
-        "$EXEC_WORKDIR" "$DISPLAY_CMD" "$ENV_DISPLAY" "$PROFILE_PORTS"
+        "$EXEC_WORKDIR" "$DISPLAY_CMD" "$ENV_DISPLAY" "$PROFILE_PORTS" "$PROFILE_VOLUMES"
 }
 
 # ── Dispatch ──────────────────────────────────────────────────────────────────
@@ -1758,7 +1836,7 @@ else
     [[ -n "$CLI_ENV" ]] && COMBINED_ENV="${COMBINED_ENV}${COMBINED_ENV:+,}${CLI_ENV}"
     _apply_combined_env
     print_summary "$PROFILE_NAME" "$FINAL_IMAGE" "$CONTAINER_NAME" \
-        "$EXEC_WORKDIR" "$DISPLAY_CMD" "$ENV_DISPLAY" "$PROFILE_PORTS"
+        "$EXEC_WORKDIR" "$DISPLAY_CMD" "$ENV_DISPLAY" "$PROFILE_PORTS" "$PROFILE_VOLUMES"
     run_exec_step "$_run_logfile" || _overall_exit=$?
 fi
 
