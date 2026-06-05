@@ -560,8 +560,8 @@ ensure_container() {
                     _p="$_p"
                 fi
             fi
-            local _p1="$(cut -f1 -d:<<<"$_p")"
-            local _p2="$(cut -f2- -d:<<<"$_p")"
+            local _p1="$(cut -f1 -d: <<<"$_p")"
+            local _p2="$(cut -f2- -d: <<<"$_p")"
             local _p1_resolved="${_p1/#\~/$HOME}"
             [[ -n "$_p" ]] && _volume_flags+=("-v" "$_p1_resolved:$_p2")
         done
