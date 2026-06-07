@@ -649,19 +649,19 @@ ensure_container() {
             "${_volume_flags[@]}" \
             "$image" \
             sleep infinity >/dev/null
-    fi
 
-    if [ -n "$setup_cmd" ]; then
-        if [ $_start -eq 0 ]; then
-            printf >&2 "\n${MG} ┌─ dex %s${R}\n" "$line"
-            _start=1
+        if [ -n "$setup_cmd" ]; then
+            if [ $_start -eq 0 ]; then
+                printf >&2 "\n${MG} ┌─ dex %s${R}\n" "$line"
+                _start=1
+            fi
+            printf >&2 "${MG} │${R} ${B}Setup  :${R} ${YL}%s${R}\n" "${setup_cmd}"
+            docker exec "${_env_flags[@]}" "$container" sh -c "$setup_cmd" &>/dev/null
         fi
-        printf >&2 "${MG} │${R} ${B}Setup  :${R} ${YL}%s${R}\n" "${setup_cmd}"
-        docker exec "${_env_flags[@]}" "$container" sh -c "$setup_cmd"
     fi
 
     if [ $_start -eq 1 ]; then
-        printf >&2 "${RD} %s${R}\n" "$footer"
+        printf >&2 "\r${RD} %s${R}\n" "$footer"
     fi
 }
 
