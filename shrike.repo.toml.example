@@ -1,0 +1,58 @@
+# dex repository config  —  place at <git-root>/.dex.toml
+#
+# This file is committed to the repository and shared with the whole team.
+# It provides the default Docker image, profile settings, and alias definitions
+# for the project. Individual developers can override any setting by creating
+# a personal local project config in ~/.dex.d/ (higher priority).
+#
+# Config hierarchy (highest priority first):
+#   1. ~/.dex.d/<name>.toml   — personal local overrides (not committed)
+#   2. <git-root>/.dex.toml   — this file (committed, team defaults)
+#   3. ~/.dex.toml            — global personal defaults (optional)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# [project] section — script-level defaults for this repository
+# ─────────────────────────────────────────────────────────────────────────────
+[project]
+# Use this profile by default when running inside this repository.
+profile = "default"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Profile section — defines or overrides the active profile's image and env
+# ─────────────────────────────────────────────────────────────────────────────
+[default]
+image = "my-org/my-project:latest"
+
+# Optional: Dockerfile to build the image from (path relative to this file).
+# dockerfile = "Dockerfile"
+
+# Optional: environment variables injected into every command.
+# env = ["KEY=value", "HOST_VAR", "JIRA=$(git branch --show-current | grep -oP 'PRJ-[0-9]+')"]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Alias sections  [default.alias-name]
+# Aliases defined under [default] are available when the default profile is
+# active. To use a different profile's aliases, add a [profile-name] section.
+# ─────────────────────────────────────────────────────────────────────────────
+
+[default.configure]
+cmd = "cmake -S . -B build -DCMAKE_BUILD_TYPE=Release"
+
+[default.build]
+cmd = "cmake --build build"
+
+[default.test]
+cmd = "ctest --test-dir build --output-on-failure"
+
+[default.shell]
+cmd         = "bash"
+interactive = true
+
+# Pipeline alias: runs configure → build → test in order, stops on first failure.
+[default.ci]
+pipeline = ["configure", "build", "test"]
+
+# Profile-scoped alias example: only available when the 'clang' profile is active.
+# [clang.build]
+# cmd = "cmake --build build --target all"
+# env = ["CC=clang", "CXX=clang++"]

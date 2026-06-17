@@ -1,0 +1,65 @@
+[project]
+profile = "format"
+
+[format]
+image = "alpine:latest"
+
+[format.add-shfmt]
+desc   = "Install shfmt."
+cmd    = "apk add --no-cache shfmt"
+hidden = true
+
+[format.ex-shfmt]
+desc   = "Run shfmt."
+cmd    = "shfmt -w -i 4 -ln bash -ci -kp dex"
+hidden = true
+
+[format.fmt]
+desc     = "Format all shell scripts."
+pipeline = ["add-shfmt", "ex-shfmt"]
+
+[format.install-deps]
+desc        = "Install dependencies."
+cmd         = "apk add git bash"
+interactive = false
+hidden      = true
+
+[format.safe-git]
+desc        = "Set /workspace as safe directory."
+cmd         = "git config --global --add safe.directory /workspace"
+interactive = false
+hidden      = true
+
+[format.bash]
+desc        = "Run bash."
+cmd         = "/bin/bash"
+interactive = true
+hidden      = true
+
+[format.shell]
+desc     = "Run shell."
+pipeline = ["install-deps", "safe-git", "bash"]
+
+[copilot]
+image = "debian:trixie-slim"
+
+[copilot.add-deps]
+desc   = "Install dependencies."
+cmd    = "apt-get update && apt-get install -y curl git && apt-get purge && apt-get autoremove && apt-get autoclean && apt-get clean"
+hidden = true
+
+[copilot.add-copilot]
+desc   = "Install GitHub Copilot CLI."
+cmd    = "curl -fsSL https://gh.io/copilot-install | bash"
+hidden = true
+
+[copilot.run-copilot]
+desc        = "Run copilot."
+cmd         = "copilot"
+env         = ["COPILOT_GITHUB_TOKEN"]
+interactive = true
+hidden      = true
+
+[copilot.run]
+desc     = "Run copilot."
+pipeline = ["add-deps", "add-copilot", "run-copilot"]

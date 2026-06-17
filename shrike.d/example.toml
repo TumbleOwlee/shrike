@@ -1,0 +1,66 @@
+# dex per-project configuration example
+# Copy this file to ~/.dex.d/<descriptive-name>.toml and edit it.
+#
+# Files in ~/.dex.d/ are scanned in alphabetical order; the first file
+# whose 'pattern' (an ERE regex) matches the current git repository root
+# path is used. This lets one config cover all worktrees of a project.
+#
+# Alias precedence (highest wins):
+#   global config aliases
+#     < repo config aliases  (<git-root>/.dex.toml)
+#       < this file's aliases  (~/.dex.d/<name>.toml)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# [project] — required section in ~/.dex.d/ files
+# ─────────────────────────────────────────────────────────────────────────────
+[project]
+# ERE regex matched against the absolute path of the git root.
+# Use (/.*)?$ at the end to also match paths *inside* the repo.
+pattern = ".*/Github/myproject(/.*)?$"
+
+# Profile from ~/.dex.toml to use (default: "default")
+profile = "default"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Profile settings — override image or other profile fields for this project
+# ─────────────────────────────────────────────────────────────────────────────
+[default]
+image = "myorg/custom-image:1.2.3"
+
+# Optional: build the image from a local Dockerfile instead.
+# Relative paths are resolved relative to this config file's directory.
+# dockerfile = "Dockerfile.dev"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Alias overrides and additions
+# These take higher precedence than aliases in the repo or global config.
+# Alias workdir defaults to mirroring your host CWD inside /workspace.
+# ─────────────────────────────────────────────────────────────────────────────
+
+[default.configure]
+# Project-specific CMake flags — overrides the repo's 'configure' alias.
+cmd     = "cmake -S /workspace -B /workspace/build -DMYPROJECT_ENABLE_TESTS=ON"
+workdir = "/workspace"
+
+[default.lint]
+# Run the project's linter (not defined in the base profile)
+cmd     = "clang-tidy -p /workspace/build $(find /workspace/src -name '*.cpp')"
+workdir = "/workspace"
+
+[default.test]
+# Replaces the repo's 'test' alias for this project.
+# env supports four forms:
+#   "KEY"         — pass the host value of KEY (skipped if unset)
+#   "KEY=VALUE"   — fixed value
+#   "KEY=$(cmd)"  — evaluate cmd on the host at run time
+cmd     = "ctest --test-dir /workspace/build --output-on-failure -j4"
+workdir = "/workspace/build"
+env     = ["CTEST_OUTPUT_ON_FAILURE=1", "MYPROJECT_TEST_DATA=/workspace/testdata", "BRANCH=$(git branch --show-current)"]
+
+# Define a project-only profile (does not need to exist in the global config).
+# [myprofile]
+# image = "myorg/special:1.0"
+# env   = ["SPECIAL=1"]
+#
+# [myprofile.build]
+# cmd = "make -C build"
