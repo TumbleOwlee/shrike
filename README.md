@@ -15,8 +15,8 @@ The typical workflow is to define short *aliases* for the commands you run repea
 ```
 shrike build
 shrike test
-shrike ci          # pipeline: configure → build → test
-shrike shell       # interactive TTY
+shrike ci                    # pipeline: configure → build → test
+shrike shell                 # interactive TTY
 shrike cmake --build build   # literal pass-through, no alias needed
 ```
 
@@ -40,13 +40,13 @@ All config files share the same flat schema. Top-level TOML tables are profile n
 
 ```toml
 [profile-name]
-image      = "image:tag"        # Docker image to pull/use
-dockerfile = "path/to/file"     # build image locally instead (relative to this file)
-env        = ["KEY", "K=V"]     # env vars injected into every command
-ports      = ["8080:8080"]      # published ports (fixed at container creation)
+image      = "image:tag"          # Docker image to pull/use
+dockerfile = "path/to/file"       # build image locally instead (relative to this file)
+env        = ["KEY", "K=V"]       # env vars injected into every command
+ports      = ["8080:8080"]        # published ports (fixed at container creation)
 volumes    = ["/host:/container"] # extra volume mounts
-user       = "$(id -u):$(id -g)" # user for docker exec (supports $(...))
-setup      = "command"          # runs once on container creation
+user       = "$(id -u):$(id -g)"  # user for docker exec (supports $(...))
+setup      = "command"            # runs once on container creation
 
 [profile-name.alias-name]
 cmd         = "shell command"   # command run via sh -c inside the container
@@ -56,7 +56,7 @@ env         = ["EXTRA=1"]       # alias-specific env (merged with profile env)
 user        = "root"            # override user for this alias only
 interactive = true              # always allocate a TTY (docker exec -it)
 hidden      = true              # hide from --list; still usable in pipelines
-pipeline    = ["a", "b", "c"]  # run aliases in order, stop on first failure
+pipeline    = ["a", "b", "c"]   # run aliases in order, stop on first failure
 ```
 
 The `[project]` section is special and only meaningful in the repo and per-project files:
