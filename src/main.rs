@@ -117,6 +117,8 @@ fn main() {
             volumes: &state.volumes,
             profile_name: &state.profile_name,
             git_root: &git_root,
+            global_file: state.global_file.as_deref(),
+            project_file: state.project_file.as_deref(),
         };
         container::ensure(&spec, args.restart).unwrap_or_else(|e| output::die(&e))
     };
@@ -328,10 +330,14 @@ fn run_direct(args: Args) {
     }
 
     let profile_data = std::fs::read_to_string("/run/shrike/profile").unwrap_or_default();
-    let git_root_str = profile_data.lines().nth(1).unwrap_or("/workspace");
-    let git_root = std::path::PathBuf::from(git_root_str);
+    let file_profile = profile_data
+        .lines()
+        .next()
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned);
+    let effective_profile = args.profile.as_deref().or(file_profile.as_deref());
 
-    let loaded = config::load(args.profile.as_deref()).unwrap_or_else(|e| output::die(&e));
+    let loaded = config::load(effective_profile).unwrap_or_else(|e| output::die(&e));
     let state = loaded.state;
 
     if args.list {
@@ -360,31 +366,102 @@ fn run_direct(args: Args) {
         return;
     }
 
+    let git_root = git::root().unwrap_or_else(|_| std::path::PathBuf::from("/workspace"));
     let cwd = std::env::current_dir().unwrap_or(git_root.clone());
     let cmd = &args.command;
     let name = &cmd[0];
     let extra_args = &cmd[1..];
     let cli_env_flags = build_env_flags(&args.env);
 
-    let (exec_cmd, workdir, env_specs) = if let Some(alias) = state.resolve_alias(name) {
-        let w = resolve_workdir(alias.workdir.as_deref(), &git_root, &cwd);
-        let mut env = state.env.clone();
-        if let Some(ref ae) = alias.env {
-            env.extend(ae.clone());
-        }
-        let cmd_str = alias.cmd.as_deref().unwrap_or("");
-        let full = if extra_args.is_empty() {
-            cmd_str.to_owned()
+    let force_interactive = args.interactive;
+    let exit_code = if let Some(alias) = state.resolve_alias(name) {
+        if let Some(ref steps) = alias.pipeline.clone() {
+            run_pipeline_direct(steps, &state, &git_root, &cwd, &cli_env_flags, force_interactive)
         } else {
-            format!("{cmd_str} {}", extra_args.join(" "))
-        };
-        (vec!["sh".to_owned(), "-c".to_owned(), full], w, env)
+            let interactive = alias.interactive == Some(true) || force_interactive;
+            run_alias_direct(alias, &state, &git_root, &cwd, extra_args, &cli_env_flags, interactive)
+        }
     } else {
-        let w = resolve_workdir(None, &git_root, &cwd);
-        (cmd.to_vec(), w, state.env.clone())
+        run_literal_direct(cmd, &state, &git_root, &cwd, &cli_env_flags, force_interactive)
+    };
+    std::process::exit(exit_code);
+}
+
+fn run_pipeline_direct(
+    steps: &[String],
+    state: &ConfigState,
+    git_root: &std::path::Path,
+    cwd: &std::path::Path,
+    cli_env_flags: &[String],
+    force_interactive: bool,
+) -> i32 {
+    for step_name in steps {
+        let alias = state
+            .get_alias_internal(step_name)
+            .unwrap_or_else(|| output::die(&format!("pipeline step `{step_name}` not found")));
+        let interactive = alias.interactive == Some(true) || force_interactive;
+        let code = run_alias_direct(alias, state, git_root, cwd, &[], cli_env_flags, interactive);
+        if code != 0 {
+            return code;
+        }
+    }
+    0
+}
+
+fn run_alias_direct(
+    alias: &AliasConfig,
+    state: &ConfigState,
+    git_root: &std::path::Path,
+    cwd: &std::path::Path,
+    extra_args: &[String],
+    cli_env_flags: &[String],
+    interactive: bool,
+) -> i32 {
+    let workdir = resolve_workdir(alias.workdir.as_deref(), git_root, cwd);
+    let mut env_specs = state.env.clone();
+    if let Some(ref ae) = alias.env {
+        env_specs.extend(ae.clone());
+    }
+    let mut env_flags = build_env_flags(&env_specs);
+    env_flags.extend_from_slice(cli_env_flags);
+    let env_disp = env_display(&env_flags);
+
+    let cmd_str = alias.cmd.as_deref().unwrap_or("");
+    let full = if extra_args.is_empty() {
+        cmd_str.to_owned()
+    } else {
+        format!("{cmd_str} {}", extra_args.join(" "))
     };
 
-    for spec in &env_specs {
+    apply_env_direct(&env_specs, cli_env_flags);
+    let mut cmd = std::process::Command::new("sh");
+    cmd.args(["-c", &full]).current_dir(&workdir);
+    docker::exec::run_native(cmd, &full, &workdir, &state.profile_name, &env_disp, interactive)
+        .exit_code
+}
+
+fn run_literal_direct(
+    cmd: &[String],
+    state: &ConfigState,
+    git_root: &std::path::Path,
+    cwd: &std::path::Path,
+    cli_env_flags: &[String],
+    interactive: bool,
+) -> i32 {
+    let workdir = resolve_workdir(None, git_root, cwd);
+    let mut env_flags = build_env_flags(&state.env);
+    env_flags.extend_from_slice(cli_env_flags);
+    let env_disp = env_display(&env_flags);
+
+    apply_env_direct(&state.env, cli_env_flags);
+    let mut c = std::process::Command::new(&cmd[0]);
+    c.args(&cmd[1..]).current_dir(&workdir);
+    docker::exec::run_native(c, &cmd.join(" "), &workdir, &state.profile_name, &env_disp, interactive)
+        .exit_code
+}
+
+fn apply_env_direct(specs: &[String], cli_env_flags: &[String]) {
+    for spec in specs {
         if let Some(eq) = spec.find('=') {
             std::env::set_var(&spec[..eq], env_spec::eval_value(&spec[eq + 1..]));
         } else if let Ok(v) = std::env::var(spec) {
@@ -392,7 +469,7 @@ fn run_direct(args: Args) {
         }
     }
     let mut skip_next = false;
-    for flag in &cli_env_flags {
+    for flag in cli_env_flags {
         if skip_next {
             skip_next = false;
             continue;
@@ -405,12 +482,4 @@ fn run_direct(args: Args) {
             std::env::set_var(&flag[..eq], &flag[eq + 1..]);
         }
     }
-
-    let _ = std::env::set_current_dir(&workdir);
-    let status = std::process::Command::new(&exec_cmd[0])
-        .args(&exec_cmd[1..])
-        .status()
-        .unwrap_or_else(|e| output::die(&format!("exec: {e}")));
-
-    std::process::exit(status.code().unwrap_or(1));
 }

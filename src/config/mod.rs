@@ -69,7 +69,17 @@ pub fn load(cli_profile: Option<&str>) -> Result<LoadedConfig, String> {
 }
 
 fn global_config_path() -> Option<PathBuf> {
-    dirs::home_dir().map(|h| h.join(".shrike.toml"))
+    let container_path = PathBuf::from("/run/shrike/global.toml");
+    if container_path.exists() {
+        return Some(container_path);
+    }
+    let legacy = dirs::home_dir().map(|h| h.join(".shrike.toml"));
+    if let Some(ref p) = legacy {
+        if p.exists() {
+            return legacy;
+        }
+    }
+    dirs::data_local_dir().map(|d| d.join("shrike").join("shrike.toml"))
 }
 
 fn load_optional(path: Option<&Path>) -> ConfigFile {
@@ -82,23 +92,26 @@ fn load_optional(path: Option<&Path>) -> ConfigFile {
     }
 }
 
-fn find_project_config(git_root: &Path) -> Result<Option<(ConfigFile, PathBuf)>, String> {
-    let dex_d = match dirs::home_dir() {
-        Some(h) => h.join(".shrike.d"),
-        None => return Ok(None),
-    };
-    if !dex_d.exists() {
-        return Ok(None);
+fn project_config_dirs() -> Vec<PathBuf> {
+    let mut list = Vec::new();
+    if let Some(h) = dirs::home_dir() {
+        list.push(h.join(".shrike.d"));
     }
-    let mut entries: Vec<PathBuf> = std::fs::read_dir(&dex_d)
-        .map_err(|e| format!("reading ~/.shrike.d: {e}"))?
+    if let Some(d) = dirs::data_local_dir() {
+        list.push(d.join("shrike").join("shrike.d"));
+    }
+    list
+}
+
+fn scan_project_dir(dir: &Path, root_str: &str) -> Result<Option<(ConfigFile, PathBuf)>, String> {
+    let mut entries: Vec<PathBuf> = std::fs::read_dir(dir)
+        .map_err(|e| format!("reading {}: {e}", dir.display()))?
         .filter_map(|e| e.ok())
         .map(|e| e.path())
         .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("toml"))
         .collect();
     entries.sort();
 
-    let root_str = git_root.to_string_lossy();
     for path in entries {
         let file = match parse_file(&path) {
             Ok(f) => f,
@@ -111,8 +124,26 @@ fn find_project_config(git_root: &Path) -> Result<Option<(ConfigFile, PathBuf)>,
         if let Some(pat) = pattern {
             let re = regex::Regex::new(pat)
                 .map_err(|e| format!("{}: invalid pattern: {e}", path.display()))?;
-            if re.is_match(&root_str) {
+            if re.is_match(root_str) {
                 return Ok(Some((file, path)));
+            }
+        }
+    }
+    Ok(None)
+}
+
+fn find_project_config(git_root: &Path) -> Result<Option<(ConfigFile, PathBuf)>, String> {
+    let container_project = PathBuf::from("/run/shrike/project.toml");
+    if container_project.exists() {
+        let file = parse_file(&container_project)
+            .map_err(|e| format!("/run/shrike/project.toml: {e}"))?;
+        return Ok(Some((file, container_project)));
+    }
+    let root_str = git_root.to_string_lossy();
+    for dir in project_config_dirs() {
+        if dir.exists() {
+            if let Some(result) = scan_project_dir(&dir, &root_str)? {
+                return Ok(Some(result));
             }
         }
     }

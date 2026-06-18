@@ -2,7 +2,7 @@ use std::process::Command;
 
 /// Evaluate a single env spec value, running shell command substitution if present.
 pub fn eval_value(raw: &str) -> String {
-    if raw.contains("$(") || raw.contains('`') {
+    if raw.contains("$(") || raw.contains('`') || raw.contains("${") {
         let out = Command::new("sh")
             .arg("-c")
             .arg(format!("printf '%s' {raw}"))
@@ -76,6 +76,20 @@ mod tests {
     fn cmd_substitution() {
         let flags = build_env_flags(&["RESULT=$(echo hello)".into()]);
         assert_eq!(flags, vec!["-e", "RESULT=hello"]);
+    }
+
+    #[test]
+    fn bash_default_expansion_unset() {
+        std::env::remove_var("DEX_TEST_UNSET_PORT");
+        let result = eval_value("${DEX_TEST_UNSET_PORT:-3061}:3061");
+        assert_eq!(result, "3061:3061");
+    }
+
+    #[test]
+    fn bash_default_expansion_set() {
+        std::env::set_var("DEX_TEST_PORT", "8080");
+        let result = eval_value("${DEX_TEST_PORT:-3061}:3061");
+        assert_eq!(result, "8080:3061");
     }
 
     #[test]

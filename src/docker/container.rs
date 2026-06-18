@@ -2,6 +2,7 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 
 use crate::display::output::{self, LifecycleBox};
+use crate::env_spec;
 
 pub struct ContainerSpec<'a> {
     pub name: &'a str,
@@ -10,6 +11,8 @@ pub struct ContainerSpec<'a> {
     pub volumes: &'a [String],
     pub profile_name: &'a str,
     pub git_root: &'a Path,
+    pub global_file: Option<&'a Path>,
+    pub project_file: Option<&'a Path>,
 }
 
 pub fn ensure(spec: &ContainerSpec, restart: bool) -> Result<bool, String> {
@@ -96,11 +99,27 @@ fn create(spec: &ContainerSpec) -> Result<(), String> {
 
     for port in spec.ports {
         args.push("-p".into());
-        args.push(port.clone());
+        args.push(env_spec::eval_value(port));
     }
     for vol in spec.volumes {
         args.push("-v".into());
-        args.push(vol.clone());
+        args.push(env_spec::eval_value(vol));
+    }
+
+    if let Some(global) = spec.global_file {
+        args.push("-v".into());
+        args.push(format!("{}:/run/shrike/global.toml:ro", global.display()));
+    }
+    if let Some(project) = spec.project_file {
+        args.push("-v".into());
+        args.push(format!("{}:/run/shrike/project.toml:ro", project.display()));
+    }
+
+    if let Ok(exe) = std::env::current_exe() {
+        args.push("-v".into());
+        args.push(format!("{}:/usr/local/bin/shrike:ro", exe.display()));
+    } else {
+        eprintln!("Warning: failed to get current executable path, shrike CLI will not be available in the container");
     }
 
     args.push(spec.image.into());

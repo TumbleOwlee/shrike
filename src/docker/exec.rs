@@ -157,8 +157,8 @@ fn run_background(container: &str, step: &ExecStep) -> ExecResult {
 fn print_summary(step: &ExecStep) {
     output::print_summary(&SummaryInfo {
         profile: &step.profile,
-        image: &step.image,
-        container: &step.container,
+        image: Some(&step.image),
+        container: Some(&step.container),
         ports: &step.ports,
         volumes: &step.volumes,
         workdir: &step.workdir,
@@ -167,6 +167,111 @@ fn print_summary(step: &ExecStep) {
         user: step.user.as_deref(),
         interactive: step.interactive,
     });
+}
+
+pub fn run_native(
+    mut cmd: std::process::Command,
+    display_cmd: &str,
+    workdir: &str,
+    profile: &str,
+    env_disp: &str,
+    interactive: bool,
+) -> ExecResult {
+    output::print_summary(&SummaryInfo {
+        profile,
+        image: None,
+        container: None,
+        ports: &[],
+        volumes: &[],
+        workdir,
+        cmd_display: display_cmd,
+        env_display: env_disp,
+        user: None,
+        interactive,
+    });
+
+    let start = std::time::Instant::now();
+
+    if interactive {
+        let mut child = match cmd.spawn() {
+            Ok(c) => c,
+            Err(e) => output::die(&format!("exec: {e}")),
+        };
+        signal::install();
+        let status = child.wait().unwrap_or_else(|_| std::process::exit(1));
+        let elapsed = start.elapsed().as_millis();
+        let code = status.code().unwrap_or(1);
+        if signal::KILLED.load(Ordering::SeqCst) {
+            eprintln!();
+            output::print_footer(130, elapsed, None);
+            signal::reraise();
+        }
+        output::print_footer(code, elapsed, None);
+        return ExecResult { exit_code: code };
+    }
+
+    let (mut logfile, log_path) = match logfile::create() {
+        Ok(t) => t,
+        Err(e) => output::die(&e),
+    };
+
+    {
+        use std::io::Write;
+        let _ = writeln!(logfile, "{}", "=".repeat(80));
+        let _ = writeln!(logfile, "Command   : {display_cmd}");
+        let _ = writeln!(logfile, "Directory : {workdir}");
+        if !env_disp.is_empty() {
+            let _ = writeln!(logfile, "Env       : {env_disp}");
+        }
+        let _ = writeln!(logfile, "{}", "=".repeat(80));
+    }
+
+    let is_tty = output::stdout_is_tty();
+
+    let mut child = match cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).spawn() {
+        Ok(c) => c,
+        Err(e) => output::die(&format!("exec: {e}")),
+    };
+
+    signal::install();
+
+    let stdout = child.stdout.take().unwrap();
+    let stderr = child.stderr.take().unwrap();
+
+    let (tx, rx) = std::sync::mpsc::channel::<String>();
+    let tx2 = tx.clone();
+    std::thread::spawn(move || {
+        for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+            let _ = tx.send(line);
+        }
+    });
+    std::thread::spawn(move || {
+        for line in BufReader::new(stderr).lines().map_while(Result::ok) {
+            let _ = tx2.send(line);
+        }
+    });
+
+    let mut display = RollingDisplay::new(is_tty);
+    for line in rx {
+        if signal::KILLED.load(Ordering::SeqCst) {
+            break;
+        }
+        display.feed(&line, &mut logfile);
+    }
+
+    let status = child.wait().unwrap_or_else(|_| std::process::exit(1));
+    let elapsed = start.elapsed().as_millis();
+    let code = status.code().unwrap_or(1);
+
+    if signal::KILLED.load(Ordering::SeqCst) {
+        eprintln!();
+        output::print_footer(130, elapsed, Some(&log_path));
+        signal::reraise();
+    }
+
+    let show_log = if code != 0 { Some(log_path.as_path()) } else { None };
+    output::print_footer(code, elapsed, show_log);
+    ExecResult { exit_code: code }
 }
 
 fn build_exec_args(container: &str, step: &ExecStep) -> Vec<String> {

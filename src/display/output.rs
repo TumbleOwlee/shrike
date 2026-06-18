@@ -158,8 +158,8 @@ pub fn print_lifecycle_box(b: &LifecycleBox) {
 
 pub struct SummaryInfo<'a> {
     pub profile: &'a str,
-    pub image: &'a str,
-    pub container: &'a str,
+    pub image: Option<&'a str>,
+    pub container: Option<&'a str>,
     pub ports: &'a [String],
     pub volumes: &'a [String],
     pub workdir: &'a str,
@@ -185,21 +185,23 @@ pub fn print_summary(s: &SummaryInfo) {
         yl = c.yl,
         p = s.profile,
     );
-    eprintln!(
-        "{mg} │{r} {b}Image     :{r} {img}",
-        mg = c.mg,
-        b = c.b,
-        r = c.r,
-        img = s.image,
-    );
-    eprintln!(
-        "{mg} │{r} {b}Container :{r} {dim}{ct}{r}",
-        mg = c.mg,
-        b = c.b,
-        r = c.r,
-        dim = c.dim,
-        ct = s.container,
-    );
+    if let Some(img) = s.image {
+        eprintln!(
+            "{mg} │{r} {b}Image     :{r} {img}",
+            mg = c.mg,
+            b = c.b,
+            r = c.r,
+        );
+    }
+    if let Some(ct) = s.container {
+        eprintln!(
+            "{mg} │{r} {b}Container :{r} {dim}{ct}{r}",
+            mg = c.mg,
+            b = c.b,
+            r = c.r,
+            dim = c.dim,
+        );
+    }
     if !s.ports.is_empty() {
         eprintln!(
             "{mg} │{r} {b}Ports     :{r} {gr}{v}{r}",
