@@ -9,6 +9,7 @@ mod list;
 mod logfile;
 mod signal;
 mod slug;
+mod trust;
 mod workdir;
 
 use std::sync::atomic::Ordering;
@@ -31,8 +32,11 @@ fn main() {
     let args = Args::parse();
 
     // ── direct mode detection ────────────────────────────────────────────────
-    let direct_mode = std::path::Path::new("/run/shrike/profile").exists()
-        || std::env::var("SHRIKE_CONTAINER_PROFILE").is_ok();
+    // Only when actually inside a container (/.dockerenv) AND the profile file
+    // the container was created with is present. A stray host env var must not
+    // flip us into running commands natively on the host.
+    let direct_mode = std::path::Path::new("/.dockerenv").exists()
+        && std::path::Path::new("/run/shrike/profile").exists();
 
     if direct_mode {
         run_direct(args);
@@ -93,6 +97,10 @@ fn main() {
         container::stop(&container_name);
         return;
     }
+
+    // ── trust gate for host-evaluated repo/project values ────────────────────
+    trust::ensure_repo_trusted(&git_root, &loaded.repo, loaded.project.as_ref())
+        .unwrap_or_else(|e| output::die(&e));
 
     // ── resolve image ────────────────────────────────────────────────────────
     let dockerfile = state.dockerfile.clone();
@@ -198,6 +206,7 @@ fn dispatch(
     docker::exec::run(container, &step).exit_code
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_pipeline(
     steps: &[String],
     args: &Args,
@@ -238,6 +247,7 @@ fn run_pipeline(
     0
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_alias_step(
     name: &str,
     alias: &AliasConfig,
@@ -287,6 +297,7 @@ fn build_alias_step(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_literal_step(
     cmd: &[String],
     state: &ConfigState,

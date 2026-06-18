@@ -35,22 +35,16 @@ pub fn load(cli_profile: Option<&str>) -> Result<LoadedConfig, String> {
     let profile = select_profile_name(&global, &repo, project_config.as_ref(), cli_profile);
     let all = list_profiles(&global, &repo, project_config.as_ref());
 
-    let global2 = load_optional(global_path.as_deref());
-    let repo2 = load_optional(Some(&repo_path));
-    let project2 = project_config
-        .as_ref()
-        .map(|_| load_optional(project_file.as_deref()));
-
     let global_dir = global_path.as_deref().and_then(|p| p.parent());
     let repo_dir = repo_path.parent();
     let project_dir = project_file.as_deref().and_then(|p| p.parent());
 
     let mut state = build_state(
-        global2,
+        &global,
         global_dir,
-        repo2,
+        &repo,
         repo_dir,
-        project_config,
+        project_config.as_ref(),
         project_dir,
         &profile,
     );
@@ -64,7 +58,7 @@ pub fn load(cli_profile: Option<&str>) -> Result<LoadedConfig, String> {
         all_profiles: all,
         global,
         repo,
-        project: project2,
+        project: project_config,
     })
 }
 

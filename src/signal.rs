@@ -37,14 +37,11 @@ pub fn reset() {
 }
 
 /// Kill the host-side docker exec process and the container-side command.
-pub fn kill_step(container: &str, exec_cmd: &str) {
+/// `exec_argv` is the exact argument line the container runs (e.g. `sh -c make`),
+/// matched against `ps` output so unrelated container processes are left alone.
+pub fn kill_step(container: &str, exec_argv: &str) {
     let pid = DOCKER_PID.load(Ordering::SeqCst);
-    let sig_num = KILL_SIG.load(Ordering::SeqCst);
-    let sig = if sig_num == libc::SIGTERM {
-        Signal::SIGTERM
-    } else {
-        Signal::SIGINT
-    };
+    let sig = caught_signal();
 
     // kill host docker exec process
     if pid > 0 {
@@ -52,10 +49,18 @@ pub fn kill_step(container: &str, exec_cmd: &str) {
     }
 
     // kill container-side process
-    kill_container_side(container, exec_cmd);
+    kill_container_side(container, exec_argv);
 }
 
-fn kill_container_side(container: &str, exec_cmd: &str) {
+fn caught_signal() -> Signal {
+    if KILL_SIG.load(Ordering::SeqCst) == libc::SIGTERM {
+        Signal::SIGTERM
+    } else {
+        Signal::SIGINT
+    }
+}
+
+fn kill_container_side(container: &str, exec_argv: &str) {
     let Ok(ps_out) = Command::new("docker")
         .args(["exec", container, "ps", "ax", "-o", "pid,args"])
         .output()
@@ -63,27 +68,30 @@ fn kill_container_side(container: &str, exec_cmd: &str) {
         return;
     };
 
+    let sig_flag = match caught_signal() {
+        Signal::SIGTERM => "-TERM",
+        _ => "-INT",
+    };
+
     let stdout = String::from_utf8_lossy(&ps_out.stdout);
     for line in stdout.lines() {
-        if line.contains(exec_cmd) && !line.contains("ps ax") {
-            let pid_str = line.trim().split_whitespace().next().unwrap_or("");
-            if !pid_str.is_empty() {
-                let _ = Command::new("docker")
-                    .args(["exec", container, "kill", "-TERM", pid_str])
-                    .output();
-            }
+        // ps -o pid,args → "  123 sh -c make build"; split off the pid, then
+        // require the remaining argv to match exactly (not a loose substring).
+        let line = line.trim();
+        let Some((pid_str, argv)) = line.split_once(char::is_whitespace) else {
+            continue;
+        };
+        if argv.trim() == exec_argv && pid_str.chars().all(|c| c.is_ascii_digit()) {
+            let _ = Command::new("docker")
+                .args(["exec", container, "kill", sig_flag, pid_str])
+                .output();
         }
     }
 }
 
 /// Re-raise the caught signal to the parent shell.
 pub fn reraise() {
-    let sig_num = KILL_SIG.load(Ordering::SeqCst);
-    let sig = if sig_num == libc::SIGTERM {
-        Signal::SIGTERM
-    } else {
-        Signal::SIGINT
-    };
+    let sig = caught_signal();
     reset();
     let _ = signal::raise(sig);
 }

@@ -28,7 +28,7 @@ fn ensure_built(tag: &str, dockerfile: &Path, rebuild: bool) -> Result<(), Strin
     });
 
     let context_dir = dockerfile.parent().unwrap_or(Path::new("."));
-    let (mut logfile, log_path) = logfile::create().map_err(|e| e)?;
+    let (mut logfile, log_path) = logfile::create()?;
     let is_tty = output::stdout_is_tty();
     let start = Instant::now();
 
@@ -75,7 +75,7 @@ fn ensure_built(tag: &str, dockerfile: &Path, rebuild: bool) -> Result<(), Strin
     output::print_footer(code, elapsed, show_log);
 
     if !status.success() {
-        return Err(format!("docker build failed (see log above)"));
+        return Err("docker build failed (see log above)".to_string());
     }
     Ok(())
 }
@@ -92,7 +92,7 @@ fn ensure_pulled(image: &str) -> Result<(), String> {
         setup_cmd: None,
     });
 
-    let (mut logfile, log_path) = logfile::create().map_err(|e| e)?;
+    let (mut logfile, log_path) = logfile::create()?;
     let is_tty = output::stdout_is_tty();
     let start = Instant::now();
 

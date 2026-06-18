@@ -2,7 +2,7 @@ use std::fs::{self, File};
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
-const MAX_AGE: Duration = Duration::from_secs(3 * 60);
+const MAX_AGE: Duration = Duration::from_secs(24 * 60 * 60);
 
 pub fn create() -> Result<(File, PathBuf), String> {
     let f = tempfile::Builder::new()

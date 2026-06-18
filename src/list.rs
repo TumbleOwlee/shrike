@@ -236,6 +236,7 @@ fn print_alias_entry(c: &Colors, name: &str, alias: &AliasConfig, width: usize) 
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn list_profiles(
     profiles: &[String],
     active: &str,
@@ -312,7 +313,7 @@ pub fn list_profiles(
             let is_active = name.as_str() == active;
             let in_global = global.profiles.contains_key(name.as_str());
             let in_repo = repo.profiles.contains_key(name.as_str());
-            let in_project = project.map_or(false, |p| p.profiles.contains_key(name.as_str()));
+            let in_project = project.is_some_and(|p| p.profiles.contains_key(name.as_str()));
 
             let mut sources = Vec::new();
             if in_global {

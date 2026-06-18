@@ -188,7 +188,7 @@ pub fn stop_all() {
 pub fn run_setup(container: &str, setup_cmd: &str) -> Result<(), String> {
     output::print_lifecycle_box(&LifecycleBox {
         action: "Setup",
-        container: container,
+        container,
         image: None,
         setup_cmd: Some(setup_cmd),
     });

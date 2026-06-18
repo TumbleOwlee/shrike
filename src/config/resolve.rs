@@ -107,17 +107,17 @@ pub fn select_profile_name(
 }
 
 pub fn build_state(
-    global: ConfigFile,
+    global: &ConfigFile,
     global_dir: Option<&Path>,
-    repo: ConfigFile,
+    repo: &ConfigFile,
     repo_dir: Option<&Path>,
-    project: Option<ConfigFile>,
+    project: Option<&ConfigFile>,
     project_dir: Option<&Path>,
     profile_name: &str,
 ) -> ConfigState {
-    let mut state = ConfigState::from_profile(&global, profile_name, global_dir);
-    state.apply(&repo, profile_name, repo_dir);
-    if let Some(ref p) = project {
+    let mut state = ConfigState::from_profile(global, profile_name, global_dir);
+    state.apply(repo, profile_name, repo_dir);
+    if let Some(p) = project {
         state.apply(p, profile_name, project_dir);
     }
     state
@@ -192,7 +192,7 @@ cmd = "ctest"
         let profile = select_profile_name(&global, &repo, Some(&project), None);
         assert_eq!(profile, "default");
 
-        let state = build_state(global, None, repo, None, Some(project), None, &profile);
+        let state = build_state(&global, None, &repo, None, Some(&project), None, &profile);
 
         // repo image overrides global
         assert_eq!(state.image.as_deref(), Some("my-org/project:latest"));
@@ -219,9 +219,9 @@ hidden = true
         )
         .unwrap();
         let state = build_state(
-            global,
+            &global,
             None,
-            ConfigFile::default(),
+            &ConfigFile::default(),
             None,
             None,
             None,

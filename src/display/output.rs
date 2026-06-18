@@ -12,6 +12,10 @@ pub fn stdout_is_tty() -> bool {
     unsafe { libc::isatty(libc::STDOUT_FILENO) != 0 }
 }
 
+pub fn stdin_is_tty() -> bool {
+    unsafe { libc::isatty(libc::STDIN_FILENO) != 0 }
+}
+
 // ── Color palette ─────────────────────────────────────────────────────────────
 
 pub struct Colors {
@@ -282,7 +286,7 @@ pub fn print_footer(exit_code: i32, elapsed_ms: u128, logfile: Option<&Path>) {
         format!("└───────────────────────────────────────────────────────────────────{ext}");
 
     let (status_color, status_label) = if exit_code == 0 {
-        (c.gr, format!("✓ exit 0"))
+        (c.gr, "✓ exit 0".to_string())
     } else {
         (c.rd, format!("✗ exit {exit_code}"))
     };

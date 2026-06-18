@@ -33,7 +33,8 @@ impl RollingDisplay {
         let _ = writeln!(logfile, "{raw}");
 
         if !self.is_tty {
-            println!("{raw}");
+            // ignore write errors (e.g. downstream `| head` closed the pipe)
+            let _ = writeln!(io::stdout(), "{raw}");
             return;
         }
 
@@ -54,7 +55,7 @@ impl RollingDisplay {
         let mut out = stdout.lock();
 
         if self.drawn > 0 {
-            write!(out, "\x1b[{}A\x1b[J", self.drawn).unwrap();
+            let _ = write!(out, "\x1b[{}A\x1b[J", self.drawn);
         }
 
         self.buf.push_back(line);
@@ -64,10 +65,10 @@ impl RollingDisplay {
 
         let pfx = self.prefix;
         for l in &self.buf {
-            writeln!(out, "{pfx}{l}").unwrap();
+            let _ = writeln!(out, "{pfx}{l}");
         }
         self.drawn = self.buf.len();
-        out.flush().unwrap();
+        let _ = out.flush();
     }
 }
 

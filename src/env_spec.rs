@@ -5,7 +5,7 @@ pub fn eval_value(raw: &str) -> String {
     if raw.contains("$(") || raw.contains('`') || raw.contains("${") {
         let out = Command::new("sh")
             .arg("-c")
-            .arg(format!("printf '%s' {raw}"))
+            .arg(format!("printf '%s' \"{raw}\""))
             .output();
         match out {
             Ok(o) => String::from_utf8_lossy(&o.stdout)
@@ -76,6 +76,12 @@ mod tests {
     fn cmd_substitution() {
         let flags = build_env_flags(&["RESULT=$(echo hello)".into()]);
         assert_eq!(flags, vec!["-e", "RESULT=hello"]);
+    }
+
+    #[test]
+    fn value_with_spaces_preserved() {
+        let result = eval_value("$(echo hello world)");
+        assert_eq!(result, "hello world");
     }
 
     #[test]

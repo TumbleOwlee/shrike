@@ -107,9 +107,10 @@ fn run_background(container: &str, step: &ExecStep) -> ExecResult {
     let stderr = child.stderr.take().unwrap();
     let stdout = child.stdout.take().unwrap();
 
+    // exact argv the container runs, for precise process matching on kill
     let cmd_for_kill = match &step.cmd {
-        StepCmd::Alias(c) => c.clone(),
-        StepCmd::Literal(v) => v.first().cloned().unwrap_or_default(),
+        StepCmd::Alias(c) => format!("sh -c {c}"),
+        StepCmd::Literal(v) => v.join(" "),
     };
     let container_owned = container.to_owned();
 
