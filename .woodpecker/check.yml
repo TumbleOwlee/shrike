@@ -2,6 +2,7 @@ steps:
   check:
     image: rust:latest
     commands:
+      - rustup target add x86_64-unknown-linux-musl
       - cargo check
       - cargo test
     when:
