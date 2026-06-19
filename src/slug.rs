@@ -15,11 +15,12 @@ pub fn slug(s: &str) -> String {
     out.trim_end_matches('-').to_owned()
 }
 
-pub fn container_name(git_root: &Path, profile: &str) -> String {
+pub fn container_name(git_root: &Path, profile: &str, branch: &str) -> String {
     format!(
-        "shrike-{}-{}",
+        "shrike--{}--{}--{}",
         slug(&git_root.to_string_lossy()),
-        slug(profile)
+        slug(profile),
+        slug(branch)
     )
 }
 
@@ -49,8 +50,17 @@ mod tests {
     fn container_name_format() {
         let root = std::path::Path::new("/home/user/projects/myapp");
         assert_eq!(
-            container_name(root, "default"),
-            "shrike-home-user-projects-myapp-default"
+            container_name(root, "default", "main"),
+            "shrike--home-user-projects-myapp--default--main"
+        );
+    }
+
+    #[test]
+    fn container_name_branch_slug() {
+        let root = std::path::Path::new("/repo");
+        assert_eq!(
+            container_name(root, "dev", "feature/my-thing"),
+            "shrike--repo--dev--feature-my-thing"
         );
     }
 }

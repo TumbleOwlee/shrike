@@ -44,7 +44,7 @@ fn main() {
     }
 
     // ── git root ─────────────────────────────────────────────────────────────
-    let git_root = git::root().unwrap_or_else(|e| output::die(&e));
+    let git_root = git::root().unwrap_or_else(|e| output::die(&format!("git root: {e}")));
     let cwd = std::env::current_dir().unwrap_or(git_root.clone());
 
     // ── stop-all ─────────────────────────────────────────────────────────────
@@ -54,7 +54,8 @@ fn main() {
     }
 
     // ── load config ──────────────────────────────────────────────────────────
-    let loaded = config::load(args.profile.as_deref()).unwrap_or_else(|e| output::die(&e));
+    let loaded = config::load(args.profile.as_deref())
+        .unwrap_or_else(|e| output::die(&format!("load config: {e}")));
     let state = loaded.state;
 
     // ── --new ────────────────────────────────────────────────────────────────
@@ -90,7 +91,8 @@ fn main() {
     }
 
     // ── container name ───────────────────────────────────────────────────────
-    let container_name = slug::container_name(&git_root, &state.profile_name);
+    let branch = git::branch(&git_root);
+    let container_name = slug::container_name(&git_root, &state.profile_name, &branch);
 
     // ── --stop ───────────────────────────────────────────────────────────────
     if args.stop {
@@ -114,27 +116,31 @@ fn main() {
 
     // ── ensure image ─────────────────────────────────────────────────────────
     image::ensure(&final_image, dockerfile.as_deref(), args.rebuild)
-        .unwrap_or_else(|e| output::die(&e));
+        .unwrap_or_else(|e| output::die(&format!("ensure image: {e}")));
 
     // ── ensure container ─────────────────────────────────────────────────────
     let is_new = {
+        let profile_env_map = env_spec::env_map_from_flags(&build_env_flags(&state.env));
         let spec = ContainerSpec {
             name: &container_name,
             image: &final_image,
             ports: &state.ports,
             volumes: &state.volumes,
+            extra_env: &profile_env_map,
             profile_name: &state.profile_name,
             git_root: &git_root,
             global_file: state.global_file.as_deref(),
             project_file: state.project_file.as_deref(),
         };
-        container::ensure(&spec, args.restart).unwrap_or_else(|e| output::die(&e))
+        container::ensure(&spec, args.restart)
+            .unwrap_or_else(|e| output::die(&format!("ensure container: {e}")))
     };
 
     // ── run setup on new container ───────────────────────────────────────────
     if is_new {
         if let Some(ref setup) = state.setup {
-            container::run_setup(&container_name, setup).unwrap_or_else(|e| output::die(&e));
+            container::run_setup(&container_name, setup)
+                .unwrap_or_else(|e| output::die(&format!("run setup: {e}")));
         }
     }
 
@@ -260,18 +266,20 @@ fn build_alias_step(
     cli_env: &[String],
     force_interactive: bool,
 ) -> ExecStep {
-    let workdir = resolve_workdir(alias.workdir.as_deref(), git_root, cwd);
+    let mut env_flags = build_env_flags(&state.env);
+    if let Some(ref alias_env) = alias.env {
+        env_flags.extend(build_env_flags(alias_env));
+    }
+    env_flags.extend_from_slice(cli_env);
+    let env_map = env_spec::env_map_from_flags(&env_flags);
+
+    let workdir = resolve_workdir(alias.workdir.as_deref(), git_root, cwd, &env_map);
     let user = alias
         .user
         .as_ref()
         .or(state.user.as_ref())
         .map(|u| env_spec::eval_value(u));
 
-    let mut env_flags = build_env_flags(&state.env);
-    if let Some(ref alias_env) = alias.env {
-        env_flags.extend(build_env_flags(alias_env));
-    }
-    env_flags.extend_from_slice(cli_env);
     let env_disp = env_display(&env_flags);
 
     let cmd_str = alias.cmd.as_deref().unwrap_or("");
@@ -308,7 +316,7 @@ fn build_literal_step(
     cli_env: &[String],
     force_interactive: bool,
 ) -> ExecStep {
-    let workdir = resolve_workdir(None, git_root, cwd);
+    let workdir = resolve_workdir(None, git_root, cwd, &[]);
     let user = state.user.as_ref().map(|u| env_spec::eval_value(u));
 
     let mut env_flags = build_env_flags(&state.env);
@@ -348,7 +356,8 @@ fn run_direct(args: Args) {
         .map(str::to_owned);
     let effective_profile = args.profile.as_deref().or(file_profile.as_deref());
 
-    let loaded = config::load(effective_profile).unwrap_or_else(|e| output::die(&e));
+    let loaded = config::load(effective_profile)
+        .unwrap_or_else(|e| output::die(&format!("load config: {e}")));
     let state = loaded.state;
 
     if args.list {
@@ -387,13 +396,35 @@ fn run_direct(args: Args) {
     let force_interactive = args.interactive;
     let exit_code = if let Some(alias) = state.resolve_alias(name) {
         if let Some(ref steps) = alias.pipeline.clone() {
-            run_pipeline_direct(steps, &state, &git_root, &cwd, &cli_env_flags, force_interactive)
+            run_pipeline_direct(
+                steps,
+                &state,
+                &git_root,
+                &cwd,
+                &cli_env_flags,
+                force_interactive,
+            )
         } else {
             let interactive = alias.interactive == Some(true) || force_interactive;
-            run_alias_direct(alias, &state, &git_root, &cwd, extra_args, &cli_env_flags, interactive)
+            run_alias_direct(
+                alias,
+                &state,
+                &git_root,
+                &cwd,
+                extra_args,
+                &cli_env_flags,
+                interactive,
+            )
         }
     } else {
-        run_literal_direct(cmd, &state, &git_root, &cwd, &cli_env_flags, force_interactive)
+        run_literal_direct(
+            cmd,
+            &state,
+            &git_root,
+            &cwd,
+            &cli_env_flags,
+            force_interactive,
+        )
     };
     std::process::exit(exit_code);
 }
@@ -428,13 +459,14 @@ fn run_alias_direct(
     cli_env_flags: &[String],
     interactive: bool,
 ) -> i32 {
-    let workdir = resolve_workdir(alias.workdir.as_deref(), git_root, cwd);
     let mut env_specs = state.env.clone();
     if let Some(ref ae) = alias.env {
         env_specs.extend(ae.clone());
     }
     let mut env_flags = build_env_flags(&env_specs);
     env_flags.extend_from_slice(cli_env_flags);
+    let env_map = env_spec::env_map_from_flags(&env_flags);
+    let workdir = resolve_workdir(alias.workdir.as_deref(), git_root, cwd, &env_map);
     let env_disp = env_display(&env_flags);
 
     let cmd_str = alias.cmd.as_deref().unwrap_or("");
@@ -447,8 +479,15 @@ fn run_alias_direct(
     apply_env_direct(&env_specs, cli_env_flags);
     let mut cmd = std::process::Command::new("sh");
     cmd.args(["-c", &full]).current_dir(&workdir);
-    docker::exec::run_native(cmd, &full, &workdir, &state.profile_name, &env_disp, interactive)
-        .exit_code
+    docker::exec::run_native(
+        cmd,
+        &full,
+        &workdir,
+        &state.profile_name,
+        &env_disp,
+        interactive,
+    )
+    .exit_code
 }
 
 fn run_literal_direct(
@@ -459,7 +498,7 @@ fn run_literal_direct(
     cli_env_flags: &[String],
     interactive: bool,
 ) -> i32 {
-    let workdir = resolve_workdir(None, git_root, cwd);
+    let workdir = resolve_workdir(None, git_root, cwd, &[]);
     let mut env_flags = build_env_flags(&state.env);
     env_flags.extend_from_slice(cli_env_flags);
     let env_disp = env_display(&env_flags);
@@ -467,8 +506,15 @@ fn run_literal_direct(
     apply_env_direct(&state.env, cli_env_flags);
     let mut c = std::process::Command::new(&cmd[0]);
     c.args(&cmd[1..]).current_dir(&workdir);
-    docker::exec::run_native(c, &cmd.join(" "), &workdir, &state.profile_name, &env_disp, interactive)
-        .exit_code
+    docker::exec::run_native(
+        c,
+        &cmd.join(" "),
+        &workdir,
+        &state.profile_name,
+        &env_disp,
+        interactive,
+    )
+    .exit_code
 }
 
 fn apply_env_direct(specs: &[String], cli_env_flags: &[String]) {

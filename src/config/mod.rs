@@ -129,8 +129,8 @@ fn scan_project_dir(dir: &Path, root_str: &str) -> Result<Option<(ConfigFile, Pa
 fn find_project_config(git_root: &Path) -> Result<Option<(ConfigFile, PathBuf)>, String> {
     let container_project = PathBuf::from("/run/shrike/project.toml");
     if container_project.exists() {
-        let file = parse_file(&container_project)
-            .map_err(|e| format!("/run/shrike/project.toml: {e}"))?;
+        let file =
+            parse_file(&container_project).map_err(|e| format!("/run/shrike/project.toml: {e}"))?;
         return Ok(Some((file, container_project)));
     }
     let root_str = git_root.to_string_lossy();

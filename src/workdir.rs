@@ -1,10 +1,15 @@
 use std::path::Path;
 
-use crate::env_spec::eval_value;
+use crate::env_spec::eval_value_with_env;
 
-pub fn resolve(alias_workdir: Option<&str>, git_root: &Path, cwd: &Path) -> String {
+pub fn resolve(
+    alias_workdir: Option<&str>,
+    git_root: &Path,
+    cwd: &Path,
+    extra_env: &[(String, String)],
+) -> String {
     match alias_workdir {
-        Some(w) => eval_value(w),
+        Some(w) => eval_value_with_env(w, extra_env),
         None => {
             let rel = cwd.strip_prefix(git_root).unwrap_or(Path::new(""));
             let rel_str = rel.to_string_lossy();
@@ -27,7 +32,7 @@ mod tests {
         let root = PathBuf::from("/repo");
         let cwd = PathBuf::from("/repo/src");
         assert_eq!(
-            resolve(Some("/workspace/build"), &root, &cwd),
+            resolve(Some("/workspace/build"), &root, &cwd, &[]),
             "/workspace/build"
         );
     }
@@ -36,20 +41,31 @@ mod tests {
     fn mirror_cwd_subdir() {
         let root = PathBuf::from("/repo");
         let cwd = PathBuf::from("/repo/src/lib");
-        assert_eq!(resolve(None, &root, &cwd), "/workspace/src/lib");
+        assert_eq!(resolve(None, &root, &cwd, &[]), "/workspace/src/lib");
     }
 
     #[test]
     fn mirror_cwd_at_root() {
         let root = PathBuf::from("/repo");
         let cwd = PathBuf::from("/repo");
-        assert_eq!(resolve(None, &root, &cwd), "/workspace");
+        assert_eq!(resolve(None, &root, &cwd, &[]), "/workspace");
     }
 
     #[test]
     fn mirror_cwd_outside_root() {
         let root = PathBuf::from("/repo");
         let cwd = PathBuf::from("/other");
-        assert_eq!(resolve(None, &root, &cwd), "/workspace");
+        assert_eq!(resolve(None, &root, &cwd, &[]), "/workspace");
+    }
+
+    #[test]
+    fn env_var_in_workdir() {
+        let root = PathBuf::from("/repo");
+        let cwd = PathBuf::from("/repo");
+        let env = vec![("JIRA_ID".to_owned(), "LMB-181".to_owned())];
+        assert_eq!(
+            resolve(Some("./build/${JIRA_ID}/native"), &root, &cwd, &env),
+            "./build/LMB-181/native"
+        );
     }
 }

@@ -9,6 +9,7 @@ pub struct ContainerSpec<'a> {
     pub image: &'a str,
     pub ports: &'a [String],
     pub volumes: &'a [String],
+    pub extra_env: &'a [(String, String)],
     pub profile_name: &'a str,
     pub git_root: &'a Path,
     pub global_file: Option<&'a Path>,
@@ -103,7 +104,7 @@ fn create(spec: &ContainerSpec) -> Result<(), String> {
     }
     for vol in spec.volumes {
         args.push("-v".into());
-        args.push(env_spec::eval_value(vol));
+        args.push(env_spec::eval_value_with_env(vol, spec.extra_env));
     }
 
     if let Some(global) = spec.global_file {

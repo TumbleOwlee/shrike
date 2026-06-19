@@ -72,7 +72,7 @@ fn run_background(container: &str, step: &ExecStep) -> ExecResult {
 
     let (mut logfile, log_path) = match logfile::create() {
         Ok(t) => t,
-        Err(e) => output::die(&e),
+        Err(e) => output::die(&format!("failed to create logfile {e}")),
     };
 
     // write header to logfile
@@ -213,7 +213,7 @@ pub fn run_native(
 
     let (mut logfile, log_path) = match logfile::create() {
         Ok(t) => t,
-        Err(e) => output::die(&e),
+        Err(e) => output::die(&format!("failed to create logfile {e}")),
     };
 
     {
@@ -270,7 +270,11 @@ pub fn run_native(
         signal::reraise();
     }
 
-    let show_log = if code != 0 { Some(log_path.as_path()) } else { None };
+    let show_log = if code != 0 {
+        Some(log_path.as_path())
+    } else {
+        None
+    };
     output::print_footer(code, elapsed, show_log);
     ExecResult { exit_code: code }
 }

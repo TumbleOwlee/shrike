@@ -18,6 +18,44 @@ pub fn eval_value(raw: &str) -> String {
     }
 }
 
+/// Like `eval_value` but also injects `extra` into the sh subprocess environment.
+/// Handles plain `$VAR` in addition to `${VAR}` and `$(cmd)`.
+pub fn eval_value_with_env(raw: &str, extra: &[(String, String)]) -> String {
+    if raw.contains("$(") || raw.contains('`') || raw.contains("${") || raw.contains('$') {
+        let mut cmd = Command::new("sh");
+        cmd.arg("-c").arg(format!("printf '%s' {raw}"));
+        for (k, v) in extra {
+            cmd.env(k, v);
+        }
+        match cmd.output() {
+            Ok(o) => String::from_utf8_lossy(&o.stdout)
+                .trim_end_matches('\n')
+                .to_owned(),
+            Err(_) => raw.to_owned(),
+        }
+    } else {
+        raw.to_owned()
+    }
+}
+
+/// Parse `-e KEY=VAL` docker flag pairs back into a `(key, value)` map.
+pub fn env_map_from_flags(flags: &[String]) -> Vec<(String, String)> {
+    let mut result = Vec::new();
+    let mut i = 0;
+    while i < flags.len() {
+        if flags[i] == "-e" && i + 1 < flags.len() {
+            let kv = &flags[i + 1];
+            if let Some(eq) = kv.find('=') {
+                result.push((kv[..eq].to_owned(), kv[eq + 1..].to_owned()));
+            }
+            i += 2;
+        } else {
+            i += 1;
+        }
+    }
+    result
+}
+
 /// Parse a list of env specs and return `-e KEY=VAL` flag pairs for docker exec.
 /// Specs:
 ///   "KEY"         — pass host value (skip if unset)
