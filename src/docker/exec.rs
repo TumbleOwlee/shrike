@@ -109,7 +109,7 @@ fn run_background(container: &str, step: &ExecStep) -> ExecResult {
 
     // exact argv the container runs, for precise process matching on kill
     let cmd_for_kill = match &step.cmd {
-        StepCmd::Alias(c) => format!("sh -c {c}"),
+        StepCmd::Alias(c) => format!("{c}"),
         StepCmd::Literal(v) => v.join(" "),
     };
     let container_owned = container.to_owned();
