@@ -7,6 +7,7 @@ use super::types::{AliasConfig, ConfigFile, ProfileSection, ProjectSection};
 const PROFILE_KEYS: &[&str] = &[
     "image",
     "dockerfile",
+    "platform",
     "env",
     "ports",
     "volumes",
@@ -64,6 +65,7 @@ fn parse_profile(table: &toml::map::Map<String, Value>) -> Result<ProfileSection
             match k.as_str() {
                 "image" => p.image = Some(as_str(v, "image")?),
                 "dockerfile" => p.dockerfile = Some(as_str(v, "dockerfile")?),
+                "platform" => p.platform = Some(as_str(v, "platform")?),
                 "user" => p.user = Some(as_str(v, "user")?),
                 "setup" => p.setup = Some(as_str(v, "setup")?),
                 "env" => p.env = Some(as_str_array(v, "env")?),

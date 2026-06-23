@@ -8,6 +8,7 @@ pub struct ConfigState {
     pub profile_name: String,
     pub image: Option<String>,
     pub dockerfile: Option<PathBuf>,
+    pub platform: Option<String>,
     pub env: Vec<String>,
     pub ports: Vec<String>,
     pub volumes: Vec<String>,
@@ -40,6 +41,9 @@ impl ConfigState {
     fn apply_profile(&mut self, profile: &ProfileSection, base_dir: Option<&Path>) {
         if let Some(v) = &profile.image {
             self.image = Some(v.clone());
+        }
+        if let Some(v) = &profile.platform {
+            self.platform = Some(v.clone());
         }
         if let Some(v) = &profile.dockerfile {
             let raw = PathBuf::from(v);

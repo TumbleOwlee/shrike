@@ -7,6 +7,7 @@ use crate::env_spec;
 pub struct ContainerSpec<'a> {
     pub name: &'a str,
     pub image: &'a str,
+    pub platform: Option<&'a str>,
     pub ports: &'a [String],
     pub volumes: &'a [String],
     pub extra_env: &'a [(String, String)],
@@ -23,6 +24,7 @@ pub fn ensure(spec: &ContainerSpec, restart: bool) -> Result<bool, String> {
             container: spec.name,
             image: None,
             setup_cmd: None,
+            platform: spec.platform,
         });
         remove(spec.name);
     }
@@ -63,6 +65,7 @@ fn ensure_running(name: &str) -> Result<(), String> {
             container: name,
             image: None,
             setup_cmd: None,
+            platform: None,
         });
         let status = Command::new("docker")
             .args(["start", name])
@@ -82,6 +85,7 @@ fn create(spec: &ContainerSpec) -> Result<(), String> {
         container: spec.name,
         image: Some(spec.image),
         setup_cmd: None,
+        platform: spec.platform,
     });
 
     let profile_content = format!("{}\n{}", spec.profile_name, spec.git_root.display());
@@ -123,8 +127,14 @@ fn create(spec: &ContainerSpec) -> Result<(), String> {
         eprintln!("Warning: failed to get current executable path, shrike CLI will not be available in the container");
     }
 
-    args.push(spec.image.into());
+    if let Some(platform) = spec.platform {
+        args.push("--platform".into());
+        args.push(platform.into());
+    }
+
+    args.push("--entrypoint".into());
     args.push("sleep".into());
+    args.push(spec.image.into());
     args.push("infinity".into());
 
     let status = Command::new("docker")
@@ -159,6 +169,7 @@ pub fn stop(name: &str) {
         container: name,
         image: None,
         setup_cmd: None,
+        platform: None,
     });
     remove(name);
 }
@@ -192,6 +203,7 @@ pub fn run_setup(container: &str, setup_cmd: &str) -> Result<(), String> {
         container,
         image: None,
         setup_cmd: Some(setup_cmd),
+        platform: None,
     });
     let status = Command::new("docker")
         .args(["exec", container, "sh", "-c", setup_cmd])

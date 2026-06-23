@@ -116,6 +116,7 @@ pub struct LifecycleBox<'a> {
     pub container: &'a str,
     pub image: Option<&'a str>,
     pub setup_cmd: Option<&'a str>,
+    pub platform: Option<&'a str>,
 }
 
 pub fn print_lifecycle_box(b: &LifecycleBox) {
@@ -153,6 +154,16 @@ pub fn print_lifecycle_box(b: &LifecycleBox) {
             r = c.r,
             yl = c.yl,
             name = "Setup   ",
+        );
+    }
+    if let Some(cmd) = b.platform {
+        eprintln!(
+            "{mg} │{r} {b}{name:<8}:{r} {yl}{cmd}{r}",
+            mg = c.mg,
+            b = c.b,
+            r = c.r,
+            yl = c.yl,
+            name = "Platform",
         );
     }
     eprintln!("{rd} {footer}{r}", rd = c.rd, r = c.r);

@@ -7,11 +7,16 @@ use crate::display::output::{self, LifecycleBox};
 use crate::display::rolling::RollingDisplay;
 use crate::logfile;
 
-pub fn ensure(image: &str, dockerfile: Option<&Path>, rebuild: bool) -> Result<(), String> {
+pub fn ensure(
+    image: &str,
+    platform: Option<&str>,
+    dockerfile: Option<&Path>,
+    rebuild: bool,
+) -> Result<(), String> {
     if let Some(df) = dockerfile {
         ensure_built(image, df, rebuild)
     } else {
-        ensure_pulled(image)
+        ensure_pulled(image, platform)
     }
 }
 
@@ -25,6 +30,7 @@ fn ensure_built(tag: &str, dockerfile: &Path, rebuild: bool) -> Result<(), Strin
         container: tag,
         image: Some(&dockerfile.display().to_string()),
         setup_cmd: None,
+        platform: None,
     });
 
     let context_dir = dockerfile.parent().unwrap_or(Path::new("."));
@@ -80,7 +86,7 @@ fn ensure_built(tag: &str, dockerfile: &Path, rebuild: bool) -> Result<(), Strin
     Ok(())
 }
 
-fn ensure_pulled(image: &str) -> Result<(), String> {
+fn ensure_pulled(image: &str, platform: Option<&str>) -> Result<(), String> {
     if image_exists(image) {
         return Ok(());
     }
@@ -90,14 +96,21 @@ fn ensure_pulled(image: &str) -> Result<(), String> {
         container: image,
         image: None,
         setup_cmd: None,
+        platform,
     });
 
     let (mut logfile, log_path) = logfile::create()?;
     let is_tty = output::stdout_is_tty();
     let start = Instant::now();
 
+    let args = if let Some(p) = platform {
+        vec!["pull", "--platform", p, image]
+    } else {
+        vec!["pull", image]
+    };
+
     let mut child = Command::new("docker")
-        .args(["pull", image])
+        .args(&args)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()

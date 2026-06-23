@@ -115,8 +115,13 @@ fn main() {
     };
 
     // ── ensure image ─────────────────────────────────────────────────────────
-    image::ensure(&final_image, dockerfile.as_deref(), args.rebuild)
-        .unwrap_or_else(|e| output::die(&format!("ensure image: {e}")));
+    image::ensure(
+        &final_image,
+        state.platform.as_ref().map(String::as_str),
+        dockerfile.as_deref(),
+        args.rebuild,
+    )
+    .unwrap_or_else(|e| output::die(&format!("ensure image: {e}")));
 
     // ── ensure container ─────────────────────────────────────────────────────
     let is_new = {
@@ -124,6 +129,7 @@ fn main() {
         let spec = ContainerSpec {
             name: &container_name,
             image: &final_image,
+            platform: state.platform.as_deref(),
             ports: &state.ports,
             volumes: &state.volumes,
             extra_env: &profile_env_map,

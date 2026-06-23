@@ -16,6 +16,7 @@ pub struct ProjectSection {
 pub struct ProfileSection {
     pub image: Option<String>,
     pub dockerfile: Option<String>,
+    pub platform: Option<String>,
     pub env: Option<Vec<String>>,
     pub ports: Option<Vec<String>>,
     pub volumes: Option<Vec<String>>,
