@@ -117,7 +117,7 @@ fn main() {
     // ── ensure image ─────────────────────────────────────────────────────────
     image::ensure(
         &final_image,
-        state.platform.as_ref().map(String::as_str),
+        state.platform.as_deref(),
         dockerfile.as_deref(),
         args.rebuild,
     )

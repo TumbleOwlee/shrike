@@ -48,9 +48,19 @@ pub fn run(container: &str, step: &ExecStep) -> ExecResult {
 
 fn pty_size() -> PtySize {
     if let Some((Width(cols), Height(rows))) = terminal_size() {
-        PtySize { rows, cols, pixel_width: 0, pixel_height: 0 }
+        PtySize {
+            rows,
+            cols,
+            pixel_width: 0,
+            pixel_height: 0,
+        }
     } else {
-        PtySize { rows: 24, cols: 80, pixel_width: 0, pixel_height: 0 }
+        PtySize {
+            rows: 24,
+            cols: 80,
+            pixel_width: 0,
+            pixel_height: 0,
+        }
     }
 }
 
@@ -175,7 +185,11 @@ fn run_background(container: &str, step: &ExecStep) -> ExecResult {
         signal::reraise();
     }
 
-    let show_log = if code != 0 { Some(log_path.as_path()) } else { None };
+    let show_log = if code != 0 {
+        Some(log_path.as_path())
+    } else {
+        None
+    };
     output::print_footer(code, elapsed, show_log);
     ExecResult { exit_code: code }
 }
@@ -324,7 +338,11 @@ pub fn run_native(
         signal::reraise();
     }
 
-    let show_log = if code != 0 { Some(log_path.as_path()) } else { None };
+    let show_log = if code != 0 {
+        Some(log_path.as_path())
+    } else {
+        None
+    };
     output::print_footer(code, elapsed, show_log);
     ExecResult { exit_code: code }
 }
