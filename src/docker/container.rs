@@ -29,11 +29,22 @@ pub fn ensure(spec: &ContainerSpec, restart: bool) -> Result<bool, String> {
         remove(spec.name);
     }
 
+    output::print_lifecycle_box(&LifecycleBox {
+        action: "Create",
+        container: spec.name,
+        image: Some(spec.image),
+        setup_cmd: None,
+        platform: spec.platform,
+    });
+
+    let profile_content = format!("{}\n{}", spec.profile_name, spec.git_root.display());
+    let profile_file = write_profile_file(spec.name, &profile_content)?;
+
     if container_exists(spec.name) {
         ensure_running(spec.name)?;
         Ok(false) // existing container
     } else {
-        create(spec)?;
+        create(spec, &profile_file)?;
         Ok(true) // new container
     }
 }
@@ -79,18 +90,7 @@ fn ensure_running(name: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn create(spec: &ContainerSpec) -> Result<(), String> {
-    output::print_lifecycle_box(&LifecycleBox {
-        action: "Create",
-        container: spec.name,
-        image: Some(spec.image),
-        setup_cmd: None,
-        platform: spec.platform,
-    });
-
-    let profile_content = format!("{}\n{}", spec.profile_name, spec.git_root.display());
-    let profile_file = write_profile_file(spec.name, &profile_content)?;
-
+fn create(spec: &ContainerSpec, profile_file: &std::path::PathBuf) -> Result<(), String> {
     let mut args: Vec<String> = vec![
         "run".into(),
         "-d".into(),
