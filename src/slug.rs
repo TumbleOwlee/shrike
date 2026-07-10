@@ -15,13 +15,22 @@ pub fn slug(s: &str) -> String {
     out.trim_end_matches('-').to_owned()
 }
 
-pub fn container_name(git_root: &Path, profile: &str, branch: &str) -> String {
-    format!(
-        "shrike--{}--{}--{}",
-        slug(&git_root.to_string_lossy()),
-        slug(profile),
-        slug(branch)
-    )
+pub fn container_name(git_root: &Path, profile: &str, branch: &str, platform: Option<&str>) -> String {
+    match platform {
+        Some(p) => format!(
+            "shrike--{}--{}--{}--{}",
+            slug(&git_root.to_string_lossy()),
+            slug(profile),
+            slug(branch),
+            slug(p)
+        ),
+        None => format!(
+            "shrike--{}--{}--{}",
+            slug(&git_root.to_string_lossy()),
+            slug(profile),
+            slug(branch)
+        ),
+    }
 }
 
 #[cfg(test)]
@@ -50,7 +59,7 @@ mod tests {
     fn container_name_format() {
         let root = std::path::Path::new("/home/user/projects/myapp");
         assert_eq!(
-            container_name(root, "default", "main"),
+            container_name(root, "default", "main", None),
             "shrike--home-user-projects-myapp--default--main"
         );
     }
@@ -59,8 +68,17 @@ mod tests {
     fn container_name_branch_slug() {
         let root = std::path::Path::new("/repo");
         assert_eq!(
-            container_name(root, "dev", "feature/my-thing"),
+            container_name(root, "dev", "feature/my-thing", None),
             "shrike--repo--dev--feature-my-thing"
+        );
+    }
+
+    #[test]
+    fn container_name_with_platform() {
+        let root = std::path::Path::new("/repo");
+        assert_eq!(
+            container_name(root, "dev", "main", Some("linux/arm64")),
+            "shrike--repo--dev--main--linux-arm64"
         );
     }
 }

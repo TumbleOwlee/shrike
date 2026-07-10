@@ -56,7 +56,10 @@ fn main() {
     // ── load config ──────────────────────────────────────────────────────────
     let loaded = config::load(args.profile.as_deref())
         .unwrap_or_else(|e| output::die(&format!("load config: {e}")));
-    let state = loaded.state;
+    let mut state = loaded.state;
+    if let Some(ref p) = args.platform {
+        state.platform = Some(p.clone());
+    }
 
     // ── --new ────────────────────────────────────────────────────────────────
     if let Some(ref tmpl) = args.new {
@@ -92,7 +95,12 @@ fn main() {
 
     // ── container name ───────────────────────────────────────────────────────
     let branch = git::branch(&git_root);
-    let container_name = slug::container_name(&git_root, &state.profile_name, &branch);
+    let container_name = slug::container_name(
+        &git_root,
+        &state.profile_name,
+        &branch,
+        state.platform.as_deref(),
+    );
 
     // ── --stop ───────────────────────────────────────────────────────────────
     if args.stop {
@@ -106,26 +114,35 @@ fn main() {
 
     // ── resolve image ────────────────────────────────────────────────────────
     let dockerfile = state.dockerfile.clone();
-    let final_image = match state.image.as_deref() {
+    let base_image = match state.image.as_deref() {
         Some(img) => img.to_owned(),
         None => match &dockerfile {
             Some(df) => format!("shrike-{}", slug::slug(&df.to_string_lossy())),
             None => output::die("no image or dockerfile defined for profile"),
         },
     };
+    // Suffix the local tag with the platform so switching --platform can't
+    // reuse an image cached for a different architecture under the same name.
+    let final_image = match state.platform.as_deref() {
+        Some(p) => format!("{base_image}--shrike-{}", slug::slug(p)),
+        None => base_image.clone(),
+    };
 
     // ── ensure image ─────────────────────────────────────────────────────────
     image::ensure(
+        &base_image,
         &final_image,
         state.platform.as_deref(),
         dockerfile.as_deref(),
         args.rebuild,
+        args.interactive,
     )
     .unwrap_or_else(|e| output::die(&format!("ensure image: {e}")));
 
     // ── ensure container ─────────────────────────────────────────────────────
     let is_new = {
-        let profile_env_map = env_spec::env_map_from_flags(&build_env_flags(&state.env));
+        let profile_env_map =
+            env_spec::env_map_from_flags(&env_spec::build_config_env_flags(&state.env));
         let spec = ContainerSpec {
             name: &container_name,
             image: &final_image,
@@ -272,11 +289,12 @@ fn build_alias_step(
     cli_env: &[String],
     force_interactive: bool,
 ) -> ExecStep {
-    let mut env_flags = build_env_flags(&state.env);
+    let mut env_flags = env_spec::build_config_env_flags(&state.env);
     if let Some(ref alias_env) = alias.env {
-        env_flags.extend(build_env_flags(alias_env));
+        env_flags.extend(env_spec::build_config_env_flags(alias_env));
     }
     env_flags.extend_from_slice(cli_env);
+    let env_flags = env_spec::dedup_env_flags(&env_flags);
     let env_map = env_spec::env_map_from_flags(&env_flags);
 
     let workdir = resolve_workdir(alias.workdir.as_deref(), git_root, cwd, &env_map);
@@ -325,8 +343,9 @@ fn build_literal_step(
     let workdir = resolve_workdir(None, git_root, cwd, &[]);
     let user = state.user.as_ref().map(|u| env_spec::eval_value(u));
 
-    let mut env_flags = build_env_flags(&state.env);
+    let mut env_flags = env_spec::build_config_env_flags(&state.env);
     env_flags.extend_from_slice(cli_env);
+    let env_flags = env_spec::dedup_env_flags(&env_flags);
     let env_disp = env_display(&env_flags);
 
     ExecStep {
@@ -469,8 +488,9 @@ fn run_alias_direct(
     if let Some(ref ae) = alias.env {
         env_specs.extend(ae.clone());
     }
-    let mut env_flags = build_env_flags(&env_specs);
+    let mut env_flags = env_spec::build_config_env_flags(&env_specs);
     env_flags.extend_from_slice(cli_env_flags);
+    let env_flags = env_spec::dedup_env_flags(&env_flags);
     let env_map = env_spec::env_map_from_flags(&env_flags);
     let workdir = resolve_workdir(alias.workdir.as_deref(), git_root, cwd, &env_map);
     let env_disp = env_display(&env_flags);
@@ -505,8 +525,9 @@ fn run_literal_direct(
     interactive: bool,
 ) -> i32 {
     let workdir = resolve_workdir(None, git_root, cwd, &[]);
-    let mut env_flags = build_env_flags(&state.env);
+    let mut env_flags = env_spec::build_config_env_flags(&state.env);
     env_flags.extend_from_slice(cli_env_flags);
+    let env_flags = env_spec::dedup_env_flags(&env_flags);
     let env_disp = env_display(&env_flags);
 
     apply_env_direct(&state.env, cli_env_flags);
@@ -526,7 +547,10 @@ fn run_literal_direct(
 fn apply_env_direct(specs: &[String], cli_env_flags: &[String]) {
     for spec in specs {
         if let Some(eq) = spec.find('=') {
-            std::env::set_var(&spec[..eq], env_spec::eval_value(&spec[eq + 1..]));
+            let key = &spec[..eq];
+            if std::env::var(key).is_err() {
+                std::env::set_var(key, env_spec::eval_value(&spec[eq + 1..]));
+            }
         } else if let Ok(v) = std::env::var(spec) {
             std::env::set_var(spec, v);
         }

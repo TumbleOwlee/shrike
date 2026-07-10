@@ -1,3 +1,4 @@
+use indexmap::IndexMap;
 use std::process::Command;
 
 /// Evaluate a single env spec value, running shell command substitution if present.
@@ -62,6 +63,18 @@ pub fn env_map_from_flags(flags: &[String]) -> Vec<(String, String)> {
 ///   "KEY=VAL"     — set to literal or evaluated value
 ///   "KEY=$(cmd)"  — evaluate cmd on host
 pub fn build_env_flags(specs: &[String]) -> Vec<String> {
+    build_env_flags_impl(specs, false)
+}
+
+/// Like `build_env_flags`, but for config-declared env specs ("KEY=VAL"): if
+/// the host environment already defines KEY, the host value wins over the
+/// configured literal/evaluated default. This keeps `sk -e KEY=val` and
+/// `KEY=val sk` behaving the same when KEY is also listed in `env = [...]`.
+pub fn build_config_env_flags(specs: &[String]) -> Vec<String> {
+    build_env_flags_impl(specs, true)
+}
+
+fn build_env_flags_impl(specs: &[String], host_overrides_literal: bool) -> Vec<String> {
     let mut flags = Vec::new();
     for spec in specs {
         let spec = spec.trim();
@@ -72,7 +85,11 @@ pub fn build_env_flags(specs: &[String]) -> Vec<String> {
         if let Some(eq) = spec.find('=') {
             let key = &spec[..eq];
             let raw_val = &spec[eq + 1..];
-            let val = eval_value(raw_val);
+            let val = if host_overrides_literal {
+                std::env::var(key).unwrap_or_else(|_| eval_value(raw_val))
+            } else {
+                eval_value(raw_val)
+            };
             flags.push("-e".into());
             flags.push(format!("{key}={val}"));
         } else {
@@ -84,6 +101,31 @@ pub fn build_env_flags(specs: &[String]) -> Vec<String> {
         }
     }
     flags
+}
+
+/// Collapse a sequence of `-e KEY=VAL` flag pairs down to one entry per key,
+/// keeping the last value assigned to each key. Used so that later env
+/// layers (alias env, then CLI `-e`) deterministically win over earlier ones.
+pub fn dedup_env_flags(flags: &[String]) -> Vec<String> {
+    let mut map: IndexMap<String, String> = IndexMap::new();
+    let mut i = 0;
+    while i < flags.len() {
+        if flags[i] == "-e" && i + 1 < flags.len() {
+            let kv = &flags[i + 1];
+            if let Some(eq) = kv.find('=') {
+                map.insert(kv[..eq].to_owned(), kv[eq + 1..].to_owned());
+            }
+            i += 2;
+        } else {
+            i += 1;
+        }
+    }
+    let mut out = Vec::new();
+    for (k, v) in map {
+        out.push("-e".into());
+        out.push(format!("{k}={v}"));
+    }
+    out
 }
 
 #[cfg(test)]
@@ -134,6 +176,38 @@ mod tests {
         std::env::set_var("DEX_TEST_PORT", "8080");
         let result = eval_value("${DEX_TEST_PORT:-3061}:3061");
         assert_eq!(result, "8080:3061");
+    }
+
+    #[test]
+    fn config_literal_ignores_host_by_default() {
+        std::env::set_var("DEX_TEST_CFG_LIT", "host");
+        let flags = build_env_flags(&["DEX_TEST_CFG_LIT=default".into()]);
+        assert_eq!(flags, vec!["-e", "DEX_TEST_CFG_LIT=default"]);
+    }
+
+    #[test]
+    fn config_literal_host_override() {
+        std::env::set_var("DEX_TEST_CFG_OVERRIDE", "host");
+        let flags = build_config_env_flags(&["DEX_TEST_CFG_OVERRIDE=default".into()]);
+        assert_eq!(flags, vec!["-e", "DEX_TEST_CFG_OVERRIDE=host"]);
+    }
+
+    #[test]
+    fn config_literal_default_when_host_unset() {
+        std::env::remove_var("DEX_TEST_CFG_UNSET");
+        let flags = build_config_env_flags(&["DEX_TEST_CFG_UNSET=default".into()]);
+        assert_eq!(flags, vec!["-e", "DEX_TEST_CFG_UNSET=default"]);
+    }
+
+    #[test]
+    fn dedup_last_wins() {
+        let flags = dedup_env_flags(&[
+            "-e".into(),
+            "KEY=one".into(),
+            "-e".into(),
+            "KEY=two".into(),
+        ]);
+        assert_eq!(flags, vec!["-e", "KEY=two"]);
     }
 
     #[test]

@@ -10,9 +10,7 @@ pub fn create() -> Result<(File, PathBuf), String> {
         .suffix(".log")
         .tempfile_in(std::env::temp_dir())
         .map_err(|e| format!("creating log file: {e}"))?;
-    let path = f.path().to_owned();
-    let file = f.into_file();
-    Ok((file, path))
+    f.keep().map_err(|e| format!("creating log file: {e}"))
 }
 
 pub fn cleanup_old() {

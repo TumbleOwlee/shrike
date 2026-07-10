@@ -30,6 +30,13 @@ pub struct Args {
     )]
     pub profile: Option<String>,
 
+    #[arg(
+        long = "platform",
+        value_name = "PLATFORM",
+        help = "Override the image platform (e.g. linux/amd64)"
+    )]
+    pub platform: Option<String>,
+
     #[arg(short = 'e', long = "env", value_name = "SPEC", action = clap::ArgAction::Append,
           help = "Pass extra env vars (KEY, KEY=VAL, or KEY=$(cmd)); repeatable")]
     pub env: Vec<String>,
