@@ -30,3 +30,7 @@ hidden = true
 [rust.gdb]
 desc = "Run debug session."
 pipeline = ["debug", "run-gdb"]
+
+[rust.run]
+desc = "Run binary"
+cmd = "cargo run"

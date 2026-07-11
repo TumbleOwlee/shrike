@@ -28,7 +28,12 @@ pub fn ensure(
 }
 
 /// Build args for `docker build`, shared by the interactive and piped paths.
-fn build_args(tag: &str, dockerfile: &Path, platform: Option<&str>, context_dir: &Path) -> Vec<String> {
+fn build_args(
+    tag: &str,
+    dockerfile: &Path,
+    platform: Option<&str>,
+    context_dir: &Path,
+) -> Vec<String> {
     let mut args = vec!["build".to_owned(), "-t".to_owned(), tag.to_owned()];
     if let Some(p) = platform {
         args.push("--platform".into());
@@ -223,7 +228,17 @@ mod tests {
             None,
             Path::new("/repo"),
         );
-        assert_eq!(args, vec!["build", "-t", "shrike-abc", "-f", "/repo/Dockerfile", "/repo"]);
+        assert_eq!(
+            args,
+            vec![
+                "build",
+                "-t",
+                "shrike-abc",
+                "-f",
+                "/repo/Dockerfile",
+                "/repo"
+            ]
+        );
     }
 
     #[test]

@@ -90,7 +90,7 @@ fn ensure_running(name: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn create(spec: &ContainerSpec, profile_file: &std::path::PathBuf) -> Result<(), String> {
+fn create(spec: &ContainerSpec, profile_file: &Path) -> Result<(), String> {
     let mut args: Vec<String> = vec![
         "run".into(),
         "-d".into(),

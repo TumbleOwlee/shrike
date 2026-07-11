@@ -201,12 +201,8 @@ mod tests {
 
     #[test]
     fn dedup_last_wins() {
-        let flags = dedup_env_flags(&[
-            "-e".into(),
-            "KEY=one".into(),
-            "-e".into(),
-            "KEY=two".into(),
-        ]);
+        let flags =
+            dedup_env_flags(&["-e".into(), "KEY=one".into(), "-e".into(), "KEY=two".into()]);
         assert_eq!(flags, vec!["-e", "KEY=two"]);
     }
 

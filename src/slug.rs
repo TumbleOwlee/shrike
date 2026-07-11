@@ -15,7 +15,12 @@ pub fn slug(s: &str) -> String {
     out.trim_end_matches('-').to_owned()
 }
 
-pub fn container_name(git_root: &Path, profile: &str, branch: &str, platform: Option<&str>) -> String {
+pub fn container_name(
+    git_root: &Path,
+    profile: &str,
+    branch: &str,
+    platform: Option<&str>,
+) -> String {
     match platform {
         Some(p) => format!(
             "shrike--{}--{}--{}--{}",
