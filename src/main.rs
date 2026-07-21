@@ -94,13 +94,8 @@ fn main() {
     }
 
     // ── container name ───────────────────────────────────────────────────────
-    let branch = git::branch(&git_root);
-    let container_name = slug::container_name(
-        &git_root,
-        &state.profile_name,
-        &branch,
-        state.platform.as_deref(),
-    );
+    let container_name =
+        slug::container_name(&git_root, &state.profile_name, state.platform.as_deref());
 
     // ── --stop ───────────────────────────────────────────────────────────────
     if args.stop {
