@@ -57,17 +57,17 @@ mod tests {
     fn container_name_format() {
         let root = std::path::Path::new("/home/user/projects/myapp");
         assert_eq!(
-            container_name(root, "default", "main", None),
-            "shrike--home-user-projects-myapp--default--main"
+            container_name(root, "default", None),
+            "shrike--home-user-projects-myapp--default"
         );
     }
 
     #[test]
-    fn container_name_branch_slug() {
+    fn container_name_profile_slug() {
         let root = std::path::Path::new("/repo");
         assert_eq!(
-            container_name(root, "dev", "feature/my-thing", None),
-            "shrike--repo--dev--feature-my-thing"
+            container_name(root, "team/dev", None),
+            "shrike--repo--team-dev"
         );
     }
 
@@ -75,8 +75,8 @@ mod tests {
     fn container_name_with_platform() {
         let root = std::path::Path::new("/repo");
         assert_eq!(
-            container_name(root, "dev", "main", Some("linux/arm64")),
-            "shrike--repo--dev--main--linux-arm64"
+            container_name(root, "dev", Some("linux/arm64")),
+            "shrike--repo--dev--linux-arm64"
         );
     }
 }
