@@ -350,7 +350,10 @@ fn build_literal_step(
         env_flags,
         env_display: env_disp,
         user,
-        interactive: force_interactive,
+        // Literal commands are interactive whenever a terminal is attached.
+        // `docker exec -it` refuses to start without one, so scripts and CI
+        // keep the PTY-backed background path unless -I is passed explicitly.
+        interactive: force_interactive || output::stdin_is_tty(),
         profile: state.profile_name.clone(),
         image: image.to_owned(),
         container: container.to_owned(),
@@ -437,14 +440,7 @@ fn run_direct(args: Args) {
             )
         }
     } else {
-        run_literal_direct(
-            cmd,
-            &state,
-            &git_root,
-            &cwd,
-            &cli_env_flags,
-            force_interactive,
-        )
+        run_literal_direct(cmd, &state, &git_root, &cwd, &cli_env_flags)
     };
     std::process::exit(exit_code);
 }
@@ -517,7 +513,6 @@ fn run_literal_direct(
     git_root: &std::path::Path,
     cwd: &std::path::Path,
     cli_env_flags: &[String],
-    interactive: bool,
 ) -> i32 {
     let workdir = resolve_workdir(None, git_root, cwd, &[]);
     let mut env_flags = env_spec::build_config_env_flags(&state.env);
@@ -534,7 +529,7 @@ fn run_literal_direct(
         &workdir,
         &state.profile_name,
         &env_disp,
-        interactive,
+        true,
     )
     .exit_code
 }

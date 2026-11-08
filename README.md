@@ -17,7 +17,7 @@ shrike build
 shrike test
 shrike ci                    # pipeline: configure → build → test
 shrike shell                 # interactive TTY
-shrike cmake --build build   # literal pass-through, no alias needed
+shrike cmake --build build   # literal pass-through, no alias needed (interactive TTY)
 ```
 
 Shrike resolves which container to use from the current git repository root and the active profile, so you can have different images and aliases per project or per toolchain without any manual management.
